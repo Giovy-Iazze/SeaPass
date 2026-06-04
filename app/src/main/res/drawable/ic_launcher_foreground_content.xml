@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- A beautiful, clean, bold white ship/boat vector silhouette -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M20,21c-1.39,0 -2.78,-0.47 -4,-1.32c-2.44,1.71 -5.56,1.71 -8,0C6.78,19.53 5.39,21 4,21H2v2h2c1.99,0 3.86,-0.7 5.35,-1.93C10.82,21.96 12.43,22.5 14,22.5s3.18,-0.54 4.65,-1.43C20.14,22.3 22.01,23 24,23h2v-2H20z M19.89,11.57L13.16,3.01c-0.62,-0.78 -1.71,-0.78 -2.33,0l-6.73,8.56C3.41,12.45 4.04,14.5 5.56,14.5h12.87c1.52,0 2.15,-2.05 1.46,-2.93z" />
+</vector>

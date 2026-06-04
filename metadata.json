@@ -1,0 +1,6 @@
+{
+  "name": "SeaPass",
+  "description": "Secure, local-first certificate wallet utility with automatic expiry notifications for maritime professionals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
