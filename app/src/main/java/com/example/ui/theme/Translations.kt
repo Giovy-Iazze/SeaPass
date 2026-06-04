@@ -141,7 +141,7 @@ object Translations {
             "loading"                   to "Ricerca dati nave in corso...",
             "error_vessel_not_found"    to "Nave non trovata.",
             "validation_vessel"         to "Inserisci un nome nave valido",
-            "journey_end"               to "Porto Sbarco",
+            "journey_end"               to "Sbarco",
             "sign_on_port"              to "Porto Imbarco",
             "theme_mode"                to "Tema dell'Applicazione",
             "theme_system"              to "Predefinito di Sistema",

@@ -3,6 +3,7 @@ package com.example.ui.dashboard
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -318,11 +319,20 @@ fun SeaServiceTabContent(
     var isShowingAddDialog by remember { mutableStateOf(false) }
     var embarkationToDelete by remember { mutableStateOf<Embarkation?>(null) }
     var embarkationToSignOff by remember { mutableStateOf<Embarkation?>(null) }
+    var embarkationToEdit by remember { mutableStateOf<Embarkation?>(null) }
 
     if (isShowingAddDialog) {
         AddEmbarkationDialog(
             viewModel = viewModel,
             onDismiss = { isShowingAddDialog = false }
+        )
+    }
+
+    if (embarkationToEdit != null) {
+        AddEmbarkationDialog(
+            viewModel = viewModel,
+            embarkToEdit = embarkationToEdit,
+            onDismiss = { embarkationToEdit = null }
         )
     }
 
@@ -419,7 +429,8 @@ fun SeaServiceTabContent(
                     EmbarkationItemCard(
                         embark = embarkation,
                         onDeleteClick = { embarkationToDelete = embarkation },
-                        onRegisterSignOffClick = { embarkationToSignOff = it }
+                        onRegisterSignOffClick = { embarkationToSignOff = it },
+                        onEditClick = { embarkationToEdit = it }
                     )
                 }
             }
@@ -443,10 +454,12 @@ fun SeaServiceStatsCard(
     totalDays: Int,
     activeOnboard: Int
 ) {
+    var showMonthsDays by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize(),
+            .animateContentSize()
+            .clickable { showMonthsDays = !showMonthsDays },
         colors = CardDefaults.elevatedCardColors(
             containerColor = PolishSurfaceVariant
         ),
@@ -468,8 +481,15 @@ fun SeaServiceStatsCard(
                     letterSpacing = 1.sp
                 )
                 val emojiSuffix = if (totalDays >= 2000) " 🐴" else ""
+                val daysText = if (showMonthsDays) {
+                    val months = totalDays / 30
+                    val days = totalDays % 30
+                    if (months > 0) "$months mesi e $days giorni" else "$days giorni"
+                } else {
+                    "$totalDays ${t("sea_days").lowercase()}"
+                }
                 Text(
-                    text = "$totalDays ${t("sea_days").lowercase()}$emojiSuffix",
+                    text = "$daysText$emojiSuffix",
                     fontSize = 38.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = PolishOnSurfaceVariantText,
@@ -518,7 +538,8 @@ fun SeaServiceStatsCard(
 fun EmbarkationItemCard(
     embark: Embarkation,
     onDeleteClick: () -> Unit,
-    onRegisterSignOffClick: (Embarkation) -> Unit
+    onRegisterSignOffClick: (Embarkation) -> Unit,
+    onEditClick: (Embarkation) -> Unit
 ) {
     val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
     val daysEarned = embark.calculateSeaDays()
@@ -614,6 +635,13 @@ fun EmbarkationItemCard(
                     }
                 }
 
+                IconButton(onClick = { onEditClick(embark) }) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Edit record",
+                        tint = PolishPrimary
+                    )
+                }
                 IconButton(onClick = onDeleteClick) {
                     Icon(
                         imageVector = Icons.Filled.Delete,
@@ -643,24 +671,22 @@ fun EmbarkationItemCard(
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
-                        text = "🔴 ${t("journey_end")}: ${
-                            if (embark.signOffDate != null) {
-                                dateFormatter.format(Date(embark.signOffDate)) + (if (!embark.signOffPort.isNullOrBlank()) " (${embark.signOffPort})" else "")
-                            } else {
-                                t("still_onboard")
-                            }
-                        }",
+                        text = if (embark.signOffDate == null) "🟢 Imbarcato" else "🔴 ${t("journey_end")}: ${dateFormatter.format(Date(embark.signOffDate))}${if (!embark.signOffPort.isNullOrBlank()) " (${embark.signOffPort})" else ""}",
                         fontSize = 12.sp,
-                        fontWeight = if (embark.signOffDate == null) FontWeight.Bold else FontWeight.Normal,
-                        color = if (embark.signOffDate == null) TagValidText else MaterialTheme.colorScheme.onSurface
+                        fontWeight = if (embark.signOffDate == null) FontWeight.ExtraBold else FontWeight.Normal,
+                        color = if (embark.signOffDate == null) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurface,
+                        modifier = if (embark.signOffDate == null) Modifier.background(Color(0xFFE8F5E9), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp) else Modifier
                     )
                 }
 
                 // Days Counter Badge
+                var showMonthsDays by remember { mutableStateOf(false) }
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = if (embark.signOffDate == null) TagValidBg else PolishSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp)
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .clickable { showMonthsDays = !showMonthsDays }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -668,16 +694,24 @@ fun EmbarkationItemCard(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "$daysEarned",
+                            text = if (showMonthsDays) {
+                                val months = daysEarned / 30
+                                val days = daysEarned % 30
+                                if (months > 0) "$months mesi e $days giorni" else "$days giorni"
+                            } else {
+                                "$daysEarned"
+                            },
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 16.sp,
+                            fontSize = 14.sp,
                             color = if (embark.signOffDate == null) TagValidText else PolishOnSurfaceVariantText
                         )
-                        Text(
-                            text = t("sea_days").lowercase(),
-                            fontSize = 11.sp,
-                            color = if (embark.signOffDate == null) TagValidText else PolishOnSurfaceVariantText.copy(alpha = 0.8f)
-                        )
+                        if (!showMonthsDays) {
+                            Text(
+                                text = t("sea_days").lowercase(),
+                                fontSize = 11.sp,
+                                color = if (embark.signOffDate == null) TagValidText else PolishOnSurfaceVariantText.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                 }
             }
@@ -959,23 +993,24 @@ fun RoleSelectionField(
 @Composable
 fun AddEmbarkationDialog(
     viewModel: EmbarkationViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    embarkToEdit: com.example.data.Embarkation? = null
 ) {
-    var vesselName by remember { mutableStateOf("") }
-    var vesselImo by remember { mutableStateOf("") }
-    var vesselMmsi by remember { mutableStateOf("") }
-    val initialRole = remember { viewModel.defaultRole.value }
+    var vesselName by remember { mutableStateOf(embarkToEdit?.vesselName ?: "") }
+    var vesselImo by remember { mutableStateOf(embarkToEdit?.vesselImo ?: "") }
+    var vesselMmsi by remember { mutableStateOf(embarkToEdit?.vesselMmsi ?: "") }
+    val initialRole = remember { if (embarkToEdit != null) embarkToEdit.rank else viewModel.defaultRole.value }
     var rank by remember { mutableStateOf(initialRole) }
-    var vesselType by remember { mutableStateOf("") }
-    var vesselFlag by remember { mutableStateOf("") }
-    var signOnPort by remember { mutableStateOf("") }
-    var signOffPort by remember { mutableStateOf("") }
-    var grossTonnage by remember { mutableStateOf("") }
-    var vesselDimensions by remember { mutableStateOf("") }
+    var vesselType by remember { mutableStateOf(embarkToEdit?.vesselType ?: "") }
+    var vesselFlag by remember { mutableStateOf(embarkToEdit?.vesselFlag ?: "") }
+    var signOnPort by remember { mutableStateOf(embarkToEdit?.signOnPort ?: "") }
+    var signOffPort by remember { mutableStateOf(embarkToEdit?.signOffPort ?: "") }
+    var grossTonnage by remember { mutableStateOf(embarkToEdit?.grossTonnage ?: "") }
+    var vesselDimensions by remember { mutableStateOf(embarkToEdit?.vesselDimensions ?: "") }
 
-    var signOnDate by remember { mutableStateOf(System.currentTimeMillis()) }
-    var signOffDate by remember { mutableStateOf<Long?>(null) }
-    var stillOnBoard by remember { mutableStateOf(true) }
+    var signOnDate by remember { mutableStateOf(embarkToEdit?.signOnDate ?: System.currentTimeMillis()) }
+    var signOffDate by remember { mutableStateOf(embarkToEdit?.signOffDate) }
+    var stillOnBoard by remember { mutableStateOf(embarkToEdit == null || embarkToEdit.signOffDate == null) }
 
     val lookupState by viewModel.lookupState.collectAsState()
 
@@ -1236,6 +1271,16 @@ fun AddEmbarkationDialog(
                 // Sign off picker (only shown if not still on board!)
                 if (!stillOnBoard) {
                     item {
+                        OutlinedTextField(
+                            value = signOffPort,
+                            onValueChange = { signOffPort = it },
+                            label = { Text("Sbarco") },
+                            singleLine = true,
+                            colors = textFieldColors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    item {
                         Column {
                             Text(t("sign_off"), style = MaterialTheme.typography.labelMedium, color = PolishSecondary)
                             Spacer(modifier = Modifier.height(4.dp))
@@ -1253,6 +1298,7 @@ fun AddEmbarkationDialog(
                 onClick = {
                     if (vesselName.isNotBlank() && rank.isNotBlank()) {
                         viewModel.saveEmbarkation(
+                            id = embarkToEdit?.id ?: 0,
                             vesselName = vesselName,
                             vesselImo = vesselImo,
                             vesselMmsi = vesselMmsi,
@@ -1276,7 +1322,7 @@ fun AddEmbarkationDialog(
                 enabled = vesselName.isNotBlank() && rank.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = PolishPrimary)
             ) {
-                Text(t("btn_save"))
+                Text(if (embarkToEdit != null) "Aggiorna Imbarco" else "Registra Imbarco")
             }
         },
         dismissButton = {

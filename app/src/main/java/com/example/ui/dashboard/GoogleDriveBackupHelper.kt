@@ -19,7 +19,7 @@ object GoogleDriveBackupHelper {
     fun getGoogleSignInIntent(context: Context): Intent {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(com.google.android.gms.common.api.Scope(DriveScopes.DRIVE_FILE))
+            .requestScopes(com.google.android.gms.common.api.Scope(DriveScopes.DRIVE_APPDATA))
             .build()
         val client = GoogleSignIn.getClient(context, gso)
         return client.signInIntent
@@ -27,7 +27,7 @@ object GoogleDriveBackupHelper {
 
     private fun getDriveService(context: Context, account: GoogleSignInAccount): Drive {
         val credential = GoogleAccountCredential.usingOAuth2(
-            context, listOf(DriveScopes.DRIVE_FILE)
+            context, listOf(DriveScopes.DRIVE_APPDATA)
         )
         credential.selectedAccount = account.account
         return Drive.Builder(
