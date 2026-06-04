@@ -57,7 +57,7 @@ No subscriptions. No servers. Your data stays on your device.
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/8888-8844/SeaPass.git
+git clone https://github.com/Giovy-Iazze/SeaPass.git
 cd SeaPass
 
 # 2. Create your .env file
