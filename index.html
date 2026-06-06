@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SeaPass – Mariner's Digital Wallet</title>
+  <meta name="google-site-verification" content="kusU4a-VBIVa1ayWpT3cl2SwzgucffKdIkgQt5wiGEQ" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:   #0a1628;
+      --deep:   #07101e;
+      --ocean:  #0d3b6e;
+      --wave:   #1565c0;
+      --foam:   #4fc3f7;
+      --white:  #f0f6ff;
+      --muted:  #8aadcc;
+      --accent: #ffd54f;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--deep);
+      color: var(--white);
+      overflow-x: hidden;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 1.2rem 2.5rem;
+      background: rgba(7,16,30,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(79,195,247,0.12);
+    }
+    .nav-logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.8rem;
+      letter-spacing: 0.12em;
+      color: var(--foam);
+    }
+    .nav-links { display: flex; gap: 2rem; }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 0.88rem;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--foam); }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
+      padding: 8rem 2.5rem 4rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-bg {
+      position: absolute; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 70% 50%, rgba(13,59,110,0.55) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 40% at 20% 80%, rgba(21,101,192,0.3) 0%, transparent 60%),
+        var(--deep);
+    }
+    /* animated wave lines */
+    .hero-bg::after {
+      content: '';
+      position: absolute; inset: 0;
+      background-image:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 60px,
+          rgba(79,195,247,0.04) 60px,
+          rgba(79,195,247,0.04) 61px
+        );
+      animation: drift 18s linear infinite;
+    }
+    @keyframes drift { from { transform: translateY(0); } to { transform: translateY(61px); } }
+
+    .hero-tag {
+      position: relative; z-index: 1;
+      font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--foam); border: 1px solid rgba(79,195,247,0.4);
+      padding: 0.35rem 0.9rem; border-radius: 2px;
+      margin-bottom: 1.6rem;
+      opacity: 0; animation: fadeUp 0.7s 0.1s forwards;
+    }
+    .hero h1 {
+      position: relative; z-index: 1;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(4rem, 10vw, 8rem);
+      line-height: 0.92;
+      letter-spacing: 0.04em;
+      color: var(--white);
+      max-width: 700px;
+      opacity: 0; animation: fadeUp 0.8s 0.25s forwards;
+    }
+    .hero h1 span { color: var(--foam); }
+    .hero-sub {
+      position: relative; z-index: 1;
+      margin-top: 1.8rem;
+      font-size: 1.1rem; font-weight: 300; line-height: 1.7;
+      color: var(--muted); max-width: 480px;
+      opacity: 0; animation: fadeUp 0.8s 0.4s forwards;
+    }
+    .hero-cta {
+      position: relative; z-index: 1;
+      margin-top: 2.5rem;
+      display: flex; gap: 1rem; flex-wrap: wrap;
+      opacity: 0; animation: fadeUp 0.8s 0.55s forwards;
+    }
+    .btn-primary {
+      display: inline-block; text-decoration: none;
+      background: var(--foam); color: var(--deep);
+      font-weight: 600; font-size: 0.9rem;
+      padding: 0.85rem 2rem; border-radius: 3px;
+      letter-spacing: 0.04em;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .btn-primary:hover { background: var(--accent); transform: translateY(-2px); }
+    .btn-outline {
+      display: inline-block; text-decoration: none;
+      border: 1px solid rgba(79,195,247,0.5); color: var(--foam);
+      font-weight: 500; font-size: 0.9rem;
+      padding: 0.85rem 2rem; border-radius: 3px;
+      letter-spacing: 0.04em;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .btn-outline:hover { border-color: var(--foam); background: rgba(79,195,247,0.08); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── FEATURES ── */
+    .section {
+      padding: 6rem 2.5rem;
+      max-width: 1100px; margin: 0 auto;
+    }
+    .section-label {
+      font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--foam); margin-bottom: 1rem;
+    }
+    .section-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(2.2rem, 5vw, 3.6rem);
+      letter-spacing: 0.05em; color: var(--white);
+      margin-bottom: 3.5rem;
+      border-bottom: 1px solid rgba(79,195,247,0.15);
+      padding-bottom: 1.2rem;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+    }
+    .feature-card {
+      background: rgba(13,59,110,0.22);
+      border: 1px solid rgba(79,195,247,0.12);
+      border-radius: 4px;
+      padding: 2rem;
+      transition: border-color 0.25s, background 0.25s, transform 0.2s;
+    }
+    .feature-card:hover {
+      border-color: rgba(79,195,247,0.4);
+      background: rgba(13,59,110,0.38);
+      transform: translateY(-4px);
+    }
+    .feature-icon {
+      font-size: 2rem; margin-bottom: 1rem;
+    }
+    .feature-card h3 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.3rem; letter-spacing: 0.08em;
+      color: var(--foam); margin-bottom: 0.6rem;
+    }
+    .feature-card p {
+      font-size: 0.9rem; line-height: 1.65; color: var(--muted); font-weight: 300;
+    }
+
+    /* ── DIVIDER ── */
+    .wave-divider {
+      width: 100%; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--foam), transparent);
+      opacity: 0.2; margin: 0 auto;
+    }
+
+    /* ── PRIVACY ── */
+    #privacy {
+      background: rgba(10,22,40,0.6);
+      border-top: 1px solid rgba(79,195,247,0.1);
+      border-bottom: 1px solid rgba(79,195,247,0.1);
+    }
+    .privacy-content { max-width: 760px; }
+    .privacy-content h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2rem; letter-spacing: 0.08em;
+      color: var(--foam); margin: 2rem 0 0.8rem;
+    }
+    .privacy-content h2:first-child { margin-top: 0; }
+    .privacy-content p, .privacy-content li {
+      font-size: 0.92rem; line-height: 1.8; color: var(--muted);
+      font-weight: 300; margin-bottom: 0.8rem;
+    }
+    .privacy-content ul { padding-left: 1.5rem; }
+    .privacy-content li { margin-bottom: 0.4rem; }
+    .privacy-content a { color: var(--foam); }
+    .privacy-date {
+      font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase;
+      color: rgba(138,173,204,0.5); margin-bottom: 2rem;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      padding: 2.5rem 2.5rem;
+      text-align: center;
+      font-size: 0.82rem; color: rgba(138,173,204,0.45);
+      border-top: 1px solid rgba(79,195,247,0.08);
+    }
+    footer a { color: var(--foam); text-decoration: none; }
+
+    @media (max-width: 600px) {
+      nav { padding: 1rem 1.2rem; }
+      .hero { padding: 7rem 1.2rem 3rem; }
+      .section { padding: 4rem 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">SeaPass</div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#privacy">Privacy</a>
+    <a href="mailto:iazzettagiovanni01@gmail.com">Contact</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-tag">For maritime professionals</div>
+  <h1>Your <span>sea</span><br>pass.</h1>
+  <p class="hero-sub">
+    SeaPass is the digital wallet for mariners — track embarkations, manage certificates, and keep your career at your fingertips.
+  </p>
+  <div class="hero-cta">
+    <a href="mailto:iazzettagiovanni01@gmail.com" class="btn-primary">Request Access</a>
+    <a href="#features" class="btn-outline">Learn More</a>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+  <div class="section-label">What it does</div>
+  <div class="section-title">Built for life at sea</div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">⚓</div>
+      <h3>Embarkation Log</h3>
+      <p>Record every voyage — vessel, dates, rank, and flag. Your complete service history, always on hand.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📋</div>
+      <h3>Certificate Tracker</h3>
+      <p>Store all your certificates with expiry dates. Get notified before anything lapses — never miss a renewal.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">☁️</div>
+      <h3>Cloud Backup</h3>
+      <p>Back up your data to your personal Google Drive with a single tap. Restore it on any device, anytime.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔒</div>
+      <h3>Private by Design</h3>
+      <p>Your data stays yours. Drive backups go to a private app folder only you can access — invisible to others.</p>
+    </div>
+  </div>
+</section>
+
+<div class="wave-divider"></div>
+
+<!-- PRIVACY POLICY -->
+<section id="privacy" style="padding: 6rem 2.5rem;">
+  <div class="section" style="padding: 0; margin: 0 auto;">
+    <div class="section-label">Legal</div>
+    <div class="section-title">Privacy Policy</div>
+    <div class="privacy-content">
+      <p class="privacy-date">Last updated: June 5, 2025</p>
+
+      <h2>1. Who We Are</h2>
+      <p>SeaPass is an Android application developed and maintained by Giovanni Iazzetta. For any privacy-related questions, contact us at <a href="mailto:iazzettagiovanni01@gmail.com">iazzettagiovanni01@gmail.com</a>.</p>
+
+      <h2>2. Data We Collect</h2>
+      <p>SeaPass collects only the data you explicitly enter into the app:</p>
+      <ul>
+        <li>Embarkation records (vessel name, dates, rank, flag state)</li>
+        <li>Certificate details (type, issue date, expiry date)</li>
+      </ul>
+      <p>We do not collect any data automatically, we do not use analytics, and we do not track your behaviour.</p>
+
+      <h2>3. Google Account & Drive</h2>
+      <p>If you choose to enable cloud backup, SeaPass requests access to your Google Account for the sole purpose of reading and writing a backup file in your Google Drive <strong>App Data folder</strong>.</p>
+      <ul>
+        <li>The App Data folder is a private, hidden folder that only SeaPass can access — it is invisible to you and to any other app in your Google Drive.</li>
+        <li>We only store a JSON backup of your in-app data (embarkations and certificates).</li>
+        <li>We never read, modify, or access any other files in your Google Drive.</li>
+        <li>We never sell, share, or transfer your Google account data to third parties.</li>
+        <li>You can revoke access at any time from your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google Account permissions page</a>.</li>
+      </ul>
+      <p>The specific Google OAuth scope used is <code>drive.appdata</code>, which provides the minimum access necessary to offer backup and restore functionality.</p>
+
+      <h2>4. Data Storage</h2>
+      <p>All app data is stored locally on your device using the Android Room database. Cloud backup is optional and stored exclusively in your personal Google Drive App Data folder. We do not operate any servers and do not store your data on our infrastructure.</p>
+
+      <h2>6. Data Retention & Deletion</h2>
+      <p>Your data remains on your device until you uninstall the app or clear its data. To delete your cloud backup, revoke SeaPass's access from your Google Account permissions page; this will make the App Data folder inaccessible and the backup will be automatically removed.</p>
+
+      <h2>7. Children's Privacy</h2>
+      <p>SeaPass is intended for adult maritime professionals and is not directed at children under 13. We do not knowingly collect data from minors.</p>
+
+      <h2>8. Changes to This Policy</h2>
+      <p>If we make material changes to this privacy policy, we will update the date at the top of this page. We encourage you to review this page periodically.</p>
+
+      <h2>9. Contact</h2>
+      <p>For any privacy-related questions or requests, contact: <a href="mailto:iazzettagiovanni01@gmail.com">iazzettagiovanni01@gmail.com</a></p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>© 2025 SeaPass · Giovanni Iazzetta · <a href="mailto:iazzettagiovanni01@gmail.com">iazzettagiovanni01@gmail.com</a></p>
+</footer>
+
+</body>
+</html>
