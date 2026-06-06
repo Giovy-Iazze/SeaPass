@@ -96,7 +96,7 @@ fun MainTabShell(
     val certsObj = (certificateUiState as? CertificateUiState.Success)?.certificates ?: emptyList()
     val embsObj = seaServiceSummary.embarkationList
 
-    val achievementsUnlockedCount = remember(certsObj, embsObj) {
+    val achievementsUnlockedCount = remember(certsObj, seaServiceSummary) {
         listOf(
             certsObj.isNotEmpty(),
             embsObj.isNotEmpty(),
@@ -104,9 +104,9 @@ fun MainTabShell(
             embsObj.size >= 3,
             embsObj.size >= 5,
             embsObj.size >= 10,
-            embsObj.size >= 15,
-            embsObj.size >= 20,
-            embsObj.size >= 30,
+            seaServiceSummary.totalSeaDays >= 200,
+            seaServiceSummary.totalSeaDays >= 500,
+            seaServiceSummary.totalSeaDays >= 1000,
             certsObj.size >= 5
         ).count { it }
     }
@@ -2212,7 +2212,8 @@ fun LanguageSettingsTabContent(
         val certsObj = (certificateViewModel.uiState.value as? CertificateUiState.Success)?.certificates ?: emptyList()
         val embsObj = embarkationViewModel.seaServiceSummary.value.embarkationList
 
-        val achievementsStatus = remember(certsObj, embsObj) {
+        val achievementsStatus = remember(certsObj, embarkationViewModel.seaServiceSummary.value) {
+            val summary = embarkationViewModel.seaServiceSummary.value
             listOf(
                 "📄" to certsObj.isNotEmpty(),
                 "🚢" to embsObj.isNotEmpty(),
@@ -2220,9 +2221,9 @@ fun LanguageSettingsTabContent(
                 "🧭" to (embsObj.size >= 3),
                 "🧜\u200D♀️" to (embsObj.size >= 5),
                 "🐳" to (embsObj.size >= 10),
-                "🐬" to (embsObj.size >= 15),
-                "🌊" to (embsObj.size >= 20),
-                "🏝️" to (embsObj.size >= 30),
+                "🐬" to (summary.totalSeaDays >= 200),
+                "🌊" to (summary.totalSeaDays >= 500),
+                "🏝️" to (summary.totalSeaDays >= 1000),
                 "⚓" to (certsObj.size >= 5)
             )
         }
@@ -2245,9 +2246,9 @@ fun LanguageSettingsTabContent(
                     "🧭" to t("3 Embarkations", "3 Imbarchi", "3 Embarkation"),
                     "🧜\u200D♀️" to t("5 Embarkations", "5 Imbarchi", "5 Embarkation"),
                     "🐳" to t("10 Embarkations", "10 Imbarchi", "10 Embarkation"),
-                    "🐬" to t("15 Embarkations", "15 Imbarchi", "15 Embarkation"),
-                    "🌊" to t("20 Embarkations", "20 Imbarchi", "20 Embarkation"),
-                    "🏝️" to t("30 Embarkations", "30 Imbarchi", "30 Embarkation"),
+                    "🐬" to t("200 Days Onboard", "200 Giorni Navigati", "200 Araw na Nakasakay"),
+                    "🌊" to t("500 Days Onboard", "500 Giorni Navigati", "500 Araw na Nakasakay"),
+                    "🏝️" to t("1000 Days Onboard", "1000 Giorni Navigati", "1000 Araw na Nakasakay"),
                     "⚓" to t("5 Certificates", "5 Certificati", "5 Certificate")
                 )
             }
