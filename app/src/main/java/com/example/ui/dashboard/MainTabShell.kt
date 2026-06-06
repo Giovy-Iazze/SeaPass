@@ -4,7 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -20,6 +22,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -57,11 +63,11 @@ fun rotateLocalBackups(context: android.content.Context, backupJsonContent: Stri
         val newBackupFile = java.io.File(backupsDir, "seapass_backup_${System.currentTimeMillis()}.json")
         newBackupFile.writeText(backupJsonContent)
 
-        // List all backup files, sort by modified time descending, and delete any past index 2 (meaning keeping newest 3)
+        // List all backup files, sort by modified time descending, and delete any past index 4 (meaning keeping newest 5)
         val files = backupsDir.listFiles { _, name -> name.startsWith("seapass_backup_") && name.endsWith(".json") }
-        if (files != null && files.size > 3) {
+        if (files != null && files.size > 5) {
             val sorted = files.sortedByDescending { it.lastModified() }
-            for (i in 3 until sorted.size) {
+            for (i in 5 until sorted.size) {
                 sorted[i].delete()
             }
         }
@@ -80,22 +86,130 @@ fun MainTabShell(
     onEditDocumentClick: (Int) -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) }
+    var isBackupRestoreInProgress by remember { mutableStateOf(false) }
     val currentLanguage by embarkationViewModel.currentLanguage.collectAsState()
     val seaServiceSummary by embarkationViewModel.seaServiceSummary.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
+    var developerTapCount by remember { mutableStateOf(0) }
+    var showDeveloperDialog by remember { mutableStateOf(false) }
+
+    val certsObj = (certificateUiState as? CertificateUiState.Success)?.certificates ?: emptyList()
+    val embsObj = seaServiceSummary.embarkationList
+
+    val achievementsUnlockedCount = remember(certsObj, embsObj) {
+        listOf(
+            certsObj.isNotEmpty(),
+            embsObj.isNotEmpty(),
+            embsObj.any { it.signOffDate != null },
+            embsObj.size >= 3,
+            embsObj.size >= 5,
+            embsObj.size >= 10,
+            embsObj.size >= 15,
+            embsObj.size >= 20,
+            embsObj.size >= 30,
+            certsObj.size >= 5
+        ).count { it }
+    }
+
+    LaunchedEffect(achievementsUnlockedCount) {
+        val prefs = context.getSharedPreferences("achievements", android.content.Context.MODE_PRIVATE)
+        val lastCount = prefs.getInt("unlocked_count", -1)
+        if (lastCount != -1 && achievementsUnlockedCount > lastCount) {
+            val msg = when (currentLanguage.code) {
+                "it" -> "Nuovo traguardo sbloccato!"
+                "fil" -> "Bagong achievement na-unlock!"
+                else -> "New achievement unlocked!"
+            }
+            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+        }
+        prefs.edit().putInt("unlocked_count", achievementsUnlockedCount).apply()
+    }
 
     // Pass the selected language context down throughout the child elements
     CompositionLocalProvider(LocalAppLanguage provides currentLanguage) {
+        if (showDeveloperDialog) {
+            val sha1 = "7A:3D:AA:CD:C2:05:46:C3:28:9F:AD:40:D6:DA:0C:75:BA:66:88:4D"
+            AlertDialog(
+                onDismissRequest = { showDeveloperDialog = false },
+                title = {
+                    Text(
+                        text = "Developer Keys / SHA-1",
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSystemInDarkTheme()) Color(0xFF80D8FF) else PolishOnSurfaceVariantText
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Use this SHA-1 fingerprint to register your app on Google Cloud Console:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = MaterialTheme.shapes.small
+                                )
+                                .padding(8.dp)
+                        ) {
+                            Text(
+                                text = sha1,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(4.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    val isDark = isSystemInDarkTheme()
+                    Button(
+                        onClick = {
+                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            val clip = android.content.ClipData.newPlainText("SHA-1", sha1)
+                            clipboard.setPrimaryClip(clip)
+                            android.widget.Toast.makeText(context, "SHA-1 copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDark) Color(0xFF80D8FF) else PolishPrimary,
+                            contentColor = if (isDark) Color(0xFF002244) else Color.White
+                        )
+                    ) {
+                        Text("Copy")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeveloperDialog = false }) {
+                        Text("Close")
+                    }
+                }
+            )
+        }
+
         Scaffold(
             topBar = {
                 TopAppBar(
                     title = {
                         Column {
                             Text(
-                                text = t("app_name") + if (seaServiceSummary.totalSeaDays > 1000) " \uD83E\uDD20" else "",
+                                text = t("app_name"),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 20.sp,
-                                color = MaterialTheme.colorScheme.onBackground
+                                color = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.clickable(
+                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    developerTapCount++
+                                    if (developerTapCount >= 10) {
+                                        developerTapCount = 0
+                                        showDeveloperDialog = true
+                                    }
+                                }
                             )
                             Text(
                                 when (selectedTab) {
@@ -130,6 +244,7 @@ fun MainTabShell(
                     NavigationBarItem(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
+                        enabled = !isBackupRestoreInProgress,
                         icon = { Icon(Icons.Filled.Home, contentDescription = t("certificates_tab")) },
                         label = { Text(t("certificates_tab")) },
                         colors = NavigationBarItemDefaults.colors(
@@ -141,6 +256,7 @@ fun MainTabShell(
                     NavigationBarItem(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
+                        enabled = !isBackupRestoreInProgress,
                         icon = { Icon(Icons.Filled.DateRange, contentDescription = t("embarkation_tab")) },
                         label = { Text(t("embarkation_tab")) },
                         colors = NavigationBarItemDefaults.colors(
@@ -152,6 +268,7 @@ fun MainTabShell(
                     NavigationBarItem(
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
+                        enabled = !isBackupRestoreInProgress,
                         icon = { Icon(Icons.Filled.Settings, contentDescription = t("settings_tab")) },
                         label = { Text(t("settings_tab")) },
                         colors = NavigationBarItemDefaults.colors(
@@ -210,9 +327,36 @@ fun MainTabShell(
                             daysBeforeExpiryAlert = daysBeforeExpiryAlert,
                             onDaysBeforeExpiryAlertChange = { embarkationViewModel.setDaysBeforeExpiryAlert(it) },
                             certificateViewModel = certificateViewModel,
-                            embarkationViewModel = embarkationViewModel
+                            embarkationViewModel = embarkationViewModel,
+                            isBackupRestoreInProgress = isBackupRestoreInProgress,
+                            setBackupRestoreInProgress = { isBackupRestoreInProgress = it }
                         )
                     }
+                }
+            }
+        }
+
+        if (isBackupRestoreInProgress) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = {},
+                properties = androidx.compose.ui.window.DialogProperties(
+                    dismissOnBackPress = false,
+                    dismissOnClickOutside = false,
+                    usePlatformDefaultWidth = false
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .pointerInput(Unit) {
+                            detectTapGestures {
+                                android.widget.Toast.makeText(context, Translations.get("backup_restore_in_progress_wait", currentLanguage), android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -296,13 +440,14 @@ fun DashboardTabContent(
             }
         }
 
+        val isDark = isSystemInDarkTheme()
         // Floating button aligned perfectly
         ExtendedFloatingActionButton(
             onClick = onAddDocumentClick,
             icon = { Icon(Icons.Filled.Add, contentDescription = t("add_document")) },
             text = { Text(t("add_document")) },
-            containerColor = PolishFABBackground,
-            contentColor = PolishFABText,
+            containerColor = if (isDark) Color(0xFF80D8FF) else PolishFABBackground,
+            contentColor = if (isDark) Color(0xFF002244) else PolishFABText,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .testTag("add_document_fab")
@@ -348,7 +493,7 @@ fun SeaServiceTabContent(
         AlertDialog(
             onDismissRequest = { embarkationToDelete = null },
             title = { Text(t("delete")) },
-            text = { Text("Are you sure you want to delete this sea service record?") },
+            text = { Text(t("delete_embark_confirm")) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -368,7 +513,9 @@ fun SeaServiceTabContent(
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -380,7 +527,8 @@ fun SeaServiceTabContent(
             item {
                 SeaServiceStatsCard(
                     totalDays = summaryState.totalSeaDays,
-                    activeOnboard = summaryState.activeOnboardCount
+                    activeOnboard = summaryState.activeOnboardCount,
+                    completedSignOffs = summaryState.embarkationList.count { it.signOffDate != null }
                 )
             }
 
@@ -413,13 +561,13 @@ fun SeaServiceTabContent(
                                 imageVector = Icons.Filled.Star,
                                 contentDescription = null,
                                 modifier = Modifier.size(48.dp),
-                                tint = PolishSecondary.copy(alpha = 0.5f)
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                             )
                             Text(
                                 text = t("no_embarkations"),
                                 textAlign = TextAlign.Center,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = PolishSecondary
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -436,12 +584,13 @@ fun SeaServiceTabContent(
             }
         }
 
+        val isDark = isSystemInDarkTheme()
         ExtendedFloatingActionButton(
             onClick = { isShowingAddDialog = true },
             icon = { Icon(Icons.Filled.Add, contentDescription = t("add_embarkation")) },
             text = { Text(t("add_embarkation")) },
-            containerColor = PolishFABBackground,
-            contentColor = PolishFABText,
+            containerColor = if (isDark) Color(0xFF80D8FF) else PolishFABBackground,
+            contentColor = if (isDark) Color(0xFF002244) else PolishFABText,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
@@ -452,7 +601,8 @@ fun SeaServiceTabContent(
 @Composable
 fun SeaServiceStatsCard(
     totalDays: Int,
-    activeOnboard: Int
+    activeOnboard: Int,
+    completedSignOffs: Int
 ) {
     var showMonthsDays by remember { mutableStateOf(false) }
     Card(
@@ -480,16 +630,15 @@ fun SeaServiceStatsCard(
                     color = PolishOnSurfaceVariantText.copy(alpha = 0.7f),
                     letterSpacing = 1.sp
                 )
-                val emojiSuffix = if (totalDays >= 2000) " 🐴" else ""
                 val daysText = if (showMonthsDays) {
                     val months = totalDays / 30
                     val days = totalDays % 30
-                    if (months > 0) "$months mesi e $days giorni" else "$days giorni"
+                    if (months > 0) t("months_and_days").format(months, days) else t("days_count").format(days)
                 } else {
-                    "$totalDays ${t("sea_days").lowercase()}"
+                    "$totalDays ${t("sea_days")}"
                 }
                 Text(
-                    text = "$daysText$emojiSuffix",
+                    text = daysText,
                     fontSize = 38.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = PolishOnSurfaceVariantText,
@@ -501,10 +650,9 @@ fun SeaServiceStatsCard(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(
-                    modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
@@ -529,6 +677,33 @@ fun SeaServiceStatsCard(
                         )
                     }
                 }
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Text(
+                        text = if (LocalAppLanguage.current.code == "it") "Sbarchi Completati" else "Completed Sign-offs",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PolishOnSurfaceVariantText.copy(alpha = 0.6f)
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(8.dp),
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (completedSignOffs > 0) Color(0xFF4CAF50) else Color.Gray
+                        ) {}
+                        Text(
+                            text = completedSignOffs.toString(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = PolishOnSurfaceVariantText
+                        )
+                    }
+                }
             }
         }
     }
@@ -541,7 +716,13 @@ fun EmbarkationItemCard(
     onRegisterSignOffClick: (Embarkation) -> Unit,
     onEditClick: (Embarkation) -> Unit
 ) {
-    val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+    val currentLanguage = LocalAppLanguage.current
+    val locale = when (currentLanguage) {
+        AppLanguage.IT -> java.util.Locale.ITALY
+        AppLanguage.FIL -> java.util.Locale("fil", "PH")
+        else -> java.util.Locale.US
+    }
+    val dateFormatter = remember(currentLanguage) { SimpleDateFormat("dd MMM yyyy", locale) }
     val daysEarned = embark.calculateSeaDays()
 
     Card(
@@ -671,7 +852,7 @@ fun EmbarkationItemCard(
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
-                        text = if (embark.signOffDate == null) "🟢 Imbarcato" else "🔴 ${t("journey_end")}: ${dateFormatter.format(Date(embark.signOffDate))}${if (!embark.signOffPort.isNullOrBlank()) " (${embark.signOffPort})" else ""}",
+                        text = if (embark.signOffDate == null) "🟢 ${t("still_onboard")}" else "🔴 ${t("journey_end")}: ${dateFormatter.format(Date(embark.signOffDate))}${if (!embark.signOffPort.isNullOrBlank()) " (${embark.signOffPort})" else ""}",
                         fontSize = 12.sp,
                         fontWeight = if (embark.signOffDate == null) FontWeight.ExtraBold else FontWeight.Normal,
                         color = if (embark.signOffDate == null) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurface,
@@ -697,7 +878,7 @@ fun EmbarkationItemCard(
                             text = if (showMonthsDays) {
                                 val months = daysEarned / 30
                                 val days = daysEarned % 30
-                                if (months > 0) "$months mesi e $days giorni" else "$days giorni"
+                                if (months > 0) t("months_and_days").format(months, days) else t("days_count").format(days)
                             } else {
                                 "$daysEarned"
                             },
@@ -707,7 +888,7 @@ fun EmbarkationItemCard(
                         )
                         if (!showMonthsDays) {
                             Text(
-                                text = t("sea_days").lowercase(),
+                                text = t("sea_days"),
                                 fontSize = 11.sp,
                                 color = if (embark.signOffDate == null) TagValidText else PolishOnSurfaceVariantText.copy(alpha = 0.8f)
                             )
@@ -868,7 +1049,7 @@ fun RoleSelectionField(
             onDismissRequest = { showPickerDialog = false },
             title = {
                 Text(
-                    text = if (currentStage == "departments") "Seleziona Settore" else "Seleziona Qualifica ($selectedDepartment)",
+                    text = if (currentStage == "departments") t("select_sector") else "${t("select_rank")} ($selectedDepartment)",
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -933,13 +1114,13 @@ fun RoleSelectionField(
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Indietro",
+                                contentDescription = t("go_back"),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Torna indietro",
+                                text = t("go_back"),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -1034,10 +1215,11 @@ fun AddEmbarkationDialog(
             onDismiss()
         },
         title = {
+            val isDark = isSystemInDarkTheme()
             Text(
-                t("add_embarkation"),
+                if (embarkToEdit != null) t("update_embark") else t("add_embarkation"),
                 fontWeight = FontWeight.Bold,
-                color = PolishOnSurfaceVariantText
+                color = if (isDark) Color(0xFF80D8FF) else PolishOnSurfaceVariantText
             )
         },
         text = {
@@ -1054,6 +1236,24 @@ fun AddEmbarkationDialog(
                 disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
 
+            val isSearchDark = isSystemInDarkTheme()
+            val cardBg = if (isSearchDark) Color(0xFFF3F4F7) else Color(0xFF1C1B1F)
+            val cardContentColor = if (isSearchDark) Color(0xFF1C1B1F) else Color(0xFFFFFFFF)
+
+            val searchFieldColors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = cardContentColor,
+                unfocusedTextColor = cardContentColor,
+                focusedBorderColor = cardContentColor.copy(alpha = 0.8f),
+                unfocusedBorderColor = cardContentColor.copy(alpha = 0.4f),
+                focusedLabelColor = cardContentColor,
+                unfocusedLabelColor = cardContentColor.copy(alpha = 0.7f),
+                focusedPlaceholderColor = cardContentColor.copy(alpha = 0.5f),
+                unfocusedPlaceholderColor = cardContentColor.copy(alpha = 0.5f),
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent
+            )
+
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1063,7 +1263,7 @@ fun AddEmbarkationDialog(
                 // Easy VesselFinder helper look up right inside add boarding form! Beautiful!
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = PolishSurfaceVariant.copy(alpha = 0.5f)),
+                        colors = CardDefaults.cardColors(containerColor = cardBg),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(
@@ -1076,7 +1276,7 @@ fun AddEmbarkationDialog(
                                 t("search_from_vf"),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = PolishOnSurfaceVariantText
+                                color = cardContentColor
                             )
 
                             var searchVal by remember { mutableStateOf("") }
@@ -1089,16 +1289,20 @@ fun AddEmbarkationDialog(
                                 OutlinedTextField(
                                     value = searchVal,
                                     onValueChange = { searchVal = it },
-                                    placeholder = { Text("IMO/MMSI") },
+                                    placeholder = { Text("IMO/MMSI", color = cardContentColor.copy(alpha = 0.5f)) },
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     modifier = Modifier.weight(1f),
-                                    colors = textFieldColors
+                                    colors = searchFieldColors
                                 )
 
+                                val isDarkSearch = isSystemInDarkTheme()
                                 Button(
                                     onClick = { viewModel.searchVessel(searchVal) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = PolishPrimary)
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isDarkSearch) Color(0xFF80D8FF) else PolishPrimary,
+                                        contentColor = if (isDarkSearch) Color(0xFF002244) else Color.White
+                                    )
                                 ) {
                                     Icon(Icons.Filled.Search, contentDescription = "Search")
                                 }
@@ -1111,14 +1315,14 @@ fun AddEmbarkationDialog(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = PolishPrimary)
-                                        Text(t("loading"), fontSize = 12.sp, color = PolishSecondary)
+                                        Text(t("loading"), fontSize = 12.sp, color = cardContentColor.copy(alpha = 0.7f))
                                     }
                                 }
                                 is VesselLookupUiState.Success -> {
                                     val isDemo = (lookupState as VesselLookupUiState.Success).isDemoMode
                                     Column {
                                         Text(
-                                            "✓ Autofilled: ${(lookupState as VesselLookupUiState.Success).vessel.name}",
+                                            "✓ ${t("autofilled")}: ${(lookupState as VesselLookupUiState.Success).vessel.name}",
                                             color = TagValidText,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.sp
@@ -1274,7 +1478,7 @@ fun AddEmbarkationDialog(
                         OutlinedTextField(
                             value = signOffPort,
                             onValueChange = { signOffPort = it },
-                            label = { Text("Sbarco") },
+                            label = { Text(t("journey_end")) },
                             singleLine = true,
                             colors = textFieldColors,
                             modifier = Modifier.fillMaxWidth()
@@ -1294,6 +1498,7 @@ fun AddEmbarkationDialog(
             }
         },
         confirmButton = {
+            val isDark = isSystemInDarkTheme()
             Button(
                 onClick = {
                     if (vesselName.isNotBlank() && rank.isNotBlank()) {
@@ -1320,9 +1525,12 @@ fun AddEmbarkationDialog(
                     }
                 },
                 enabled = vesselName.isNotBlank() && rank.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = PolishPrimary)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDark) Color(0xFF80D8FF) else PolishPrimary,
+                    contentColor = if (isDark) Color(0xFF002244) else Color.White
+                )
             ) {
-                Text(if (embarkToEdit != null) "Aggiorna Imbarco" else "Registra Imbarco")
+                Text(if (embarkToEdit != null) t("update_embark") else t("save_embark"))
             }
         },
         dismissButton = {
@@ -1346,8 +1554,14 @@ fun DatePickerField(
 ) {
     val context = LocalContext.current
     val calendar = remember { Calendar.getInstance().apply { timeInMillis = initialSelectedDate } }
-    val formatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
-    var displayedText by remember(initialSelectedDate) { mutableStateOf(formatter.format(Date(initialSelectedDate))) }
+    val currentLanguage = LocalAppLanguage.current
+    val locale = when (currentLanguage.code) {
+        "it" -> java.util.Locale("it", "IT")
+        "fil" -> java.util.Locale("tl", "PH")
+        else -> java.util.Locale.US
+    }
+    val formatter = remember(currentLanguage) { SimpleDateFormat("dd MMM yyyy", locale) }
+    var displayedText by remember(initialSelectedDate, currentLanguage) { mutableStateOf(formatter.format(Date(initialSelectedDate))) }
 
     OutlinedCard(
         onClick = {
@@ -1389,10 +1603,13 @@ fun VesselFinderTabContent(
 ) {
     var queryValue by remember { mutableStateOf("") }
     val lookupState by viewModel.lookupState.collectAsState()
+    val isSystemInDarkTheme = isSystemInDarkTheme()
+    val backColor = if (isSystemInDarkTheme) Color.LightGray else Color.DarkGray
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .background(backColor)
             .padding(horizontal = 16.dp),
         contentPadding = PaddingValues(top = 24.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -1632,58 +1849,77 @@ fun LanguageSettingsTabContent(
     daysBeforeExpiryAlert: Int,
     onDaysBeforeExpiryAlertChange: (Int) -> Unit,
     certificateViewModel: com.example.ui.viewmodel.CertificateViewModel,
-    embarkationViewModel: com.example.ui.viewmodel.EmbarkationViewModel
+    embarkationViewModel: com.example.ui.viewmodel.EmbarkationViewModel,
+    isBackupRestoreInProgress: Boolean,
+    setBackupRestoreInProgress: (Boolean) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     val createDocumentLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         if (uri != null) {
-            try {
-                val certs = (certificateViewModel.uiState.value as? CertificateUiState.Success)?.certificates ?: emptyList()
-                val embs = embarkationViewModel.seaServiceSummary.value.embarkationList
-                
-                val json = org.json.JSONObject()
-                val certsArray = org.json.JSONArray()
-                certs.forEach { cert ->
-                    val obj = org.json.JSONObject()
-                    obj.put("title", cert.title)
-                    obj.put("certNumber", cert.certNumber)
-                    obj.put("issueDate", cert.issueDate)
-                    obj.put("expiryDate", cert.expiryDate)
-                    obj.put("category", cert.category)
-                    obj.put("isMandatory", cert.isMandatory)
-                    certsArray.put(obj)
-                }
-                json.put("certificates", certsArray)
+            setBackupRestoreInProgress(true)
+            coroutineScope.launch {
+                try {
+                    val certs = (certificateViewModel.uiState.value as? CertificateUiState.Success)?.certificates ?: emptyList()
+                    val embs = embarkationViewModel.seaServiceSummary.value.embarkationList
+                    
+                    val json = org.json.JSONObject()
+                    val certsArray = org.json.JSONArray()
+                    certs.forEach { cert ->
+                        val obj = org.json.JSONObject()
+                        obj.put("title", cert.title)
+                        obj.put("certNumber", cert.certNumber)
+                        obj.put("issueDate", cert.issueDate)
+                        obj.put("expiryDate", cert.expiryDate)
+                        obj.put("category", cert.category)
+                        obj.put("isMandatory", cert.isMandatory)
+                        certsArray.put(obj)
+                    }
+                    json.put("certificates", certsArray)
 
-                val embsArray = org.json.JSONArray()
-                embs.forEach { emb ->
-                    val obj = org.json.JSONObject()
-                    obj.put("vesselName", emb.vesselName)
-                    obj.put("vesselImo", emb.vesselImo)
-                    obj.put("vesselMmsi", emb.vesselMmsi ?: "")
-                    obj.put("rank", emb.rank)
-                    obj.put("vesselType", emb.vesselType ?: "")
-                    obj.put("vesselFlag", emb.vesselFlag ?: "")
-                    obj.put("signOnDate", emb.signOnDate)
-                    if (emb.signOffDate != null) obj.put("signOffDate", emb.signOffDate)
-                    if (emb.signOnPort != null) obj.put("signOnPort", emb.signOnPort)
-                    if (emb.signOffPort != null) obj.put("signOffPort", emb.signOffPort)
-                    embsArray.put(obj)
+                    val embsArray = org.json.JSONArray()
+                    embs.forEach { emb ->
+                        val obj = org.json.JSONObject()
+                        obj.put("vesselName", emb.vesselName)
+                        obj.put("vesselImo", emb.vesselImo)
+                        obj.put("vesselMmsi", emb.vesselMmsi ?: "")
+                        obj.put("rank", emb.rank)
+                        obj.put("vesselType", emb.vesselType ?: "")
+                        obj.put("vesselFlag", emb.vesselFlag ?: "")
+                        obj.put("signOnDate", emb.signOnDate)
+                        if (emb.signOffDate != null) obj.put("signOffDate", emb.signOffDate)
+                        if (emb.signOnPort != null) obj.put("signOnPort", emb.signOnPort)
+                        if (emb.signOffPort != null) obj.put("signOffPort", emb.signOffPort)
+                        embsArray.put(obj)
+                    }
+                    json.put("embarkations", embsArray)
+                    
+                    val jsonStr = json.toString(4)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { out ->
+                            out.write(jsonStr.toByteArray())
+                        }
+                    }
+                    val msg = when (currentLanguage.code) {
+                        "it" -> "Backup salvato!"
+                        "fil" -> "Nai-save ang backup!"
+                        else -> "Backup saved!"
+                    }
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                    kotlinx.coroutines.delay(2000)
+                } catch (e: Exception) {
+                    val errMsg = when (currentLanguage.code) {
+                        "it" -> "Errore salvataggio backup"
+                        "fil" -> "Failed i-save ang backup"
+                        else -> "Error saving backup"
+                    }
+                    android.widget.Toast.makeText(context, "$errMsg: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                } finally {
+                    setBackupRestoreInProgress(false)
                 }
-                json.put("embarkations", embsArray)
-                
-                val jsonStr = json.toString(4)
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    out.write(jsonStr.toByteArray())
-                }
-                // Maintain local rotation count (max 3 backups)
-                rotateLocalBackups(context, jsonStr)
-                android.widget.Toast.makeText(context, "Backup saved to Drive!", android.widget.Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                android.widget.Toast.makeText(context, "Error saving backup: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -1692,54 +1928,72 @@ fun LanguageSettingsTabContent(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            try {
-                val jsonString = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                if (jsonString != null) {
-                    val jsonObj = org.json.JSONObject(jsonString)
-                    val certsArray = jsonObj.optJSONArray("certificates")
-                    if (certsArray != null) {
-                        for (i in 0 until certsArray.length()) {
-                            val c = certsArray.getJSONObject(i)
-                            certificateViewModel.saveCertificate(
-                                title = c.getString("title"),
-                                category = if (c.has("category")) c.getString("category") else "Other",
-                                issueDate = c.getLong("issueDate"),
-                                expiryDate = c.getLong("expiryDate"),
-                                certNumber = c.getString("certNumber"),
-                                isMandatory = if (c.has("isMandatory")) c.getBoolean("isMandatory") else true,
-                                attachmentUriString = null,
-                                context = context,
-                                onComplete = {}
-                            )
-                        }
+            setBackupRestoreInProgress(true)
+            coroutineScope.launch {
+                try {
+                    val jsonString: String? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     }
-                    val embsArray = jsonObj.optJSONArray("embarkations")
-                    if (embsArray != null) {
-                        for (i in 0 until embsArray.length()) {
-                            val e = embsArray.getJSONObject(i)
-                            embarkationViewModel.saveEmbarkation(
-                                id = 0,
-                                vesselName = e.getString("vesselName"),
-                                vesselImo = e.getString("vesselImo"),
-                                vesselMmsi = e.optString("vesselMmsi").takeIf { it.isNotBlank() },
-                                rank = e.getString("rank"),
-                                vesselType = e.optString("vesselType").takeIf { it.isNotBlank() },
-                                vesselFlag = e.optString("vesselFlag").takeIf { it.isNotBlank() },
-                                signOnDate = e.getLong("signOnDate"),
-                                signOffDate = if (e.has("signOffDate")) e.getLong("signOffDate") else null,
-                                signOnPort = if (e.has("signOnPort")) e.getString("signOnPort") else null,
-                                signOffPort = if (e.has("signOffPort")) e.getString("signOffPort") else null,
-                                seaDaysOverride = null,
-                                grossTonnage = null,
-                                vesselDimensions = null,
-                                onComplete = {}
-                            )
+                    if (jsonString != null) {
+                        val jsonObj = org.json.JSONObject(jsonString)
+                        val certsArray = jsonObj.optJSONArray("certificates")
+                        if (certsArray != null) {
+                            for (i in 0 until certsArray.length()) {
+                                val c = certsArray.getJSONObject(i)
+                                certificateViewModel.saveCertificate(
+                                    title = c.getString("title"),
+                                    category = if (c.has("category")) c.getString("category") else "Other",
+                                    issueDate = c.getLong("issueDate"),
+                                    expiryDate = c.getLong("expiryDate"),
+                                    certNumber = c.getString("certNumber"),
+                                    isMandatory = if (c.has("isMandatory")) c.getBoolean("isMandatory") else true,
+                                    attachmentUriString = null,
+                                    context = context,
+                                    onComplete = {}
+                                )
+                            }
                         }
+                        val embsArray = jsonObj.optJSONArray("embarkations")
+                        if (embsArray != null) {
+                            for (i in 0 until embsArray.length()) {
+                                val e = embsArray.getJSONObject(i)
+                                embarkationViewModel.saveEmbarkation(
+                                    id = 0,
+                                    vesselName = e.getString("vesselName"),
+                                    vesselImo = e.getString("vesselImo"),
+                                    vesselMmsi = e.optString("vesselMmsi").takeIf { it.isNotBlank() },
+                                    rank = e.getString("rank"),
+                                    vesselType = e.optString("vesselType").takeIf { it.isNotBlank() },
+                                    vesselFlag = e.optString("vesselFlag").takeIf { it.isNotBlank() },
+                                    signOnDate = e.getLong("signOnDate"),
+                                    signOffDate = if (e.has("signOffDate")) e.getLong("signOffDate") else null,
+                                    signOnPort = if (e.has("signOnPort")) e.getString("signOnPort") else null,
+                                    signOffPort = if (e.has("signOffPort")) e.getString("signOffPort") else null,
+                                    seaDaysOverride = null,
+                                    grossTonnage = null,
+                                    vesselDimensions = null,
+                                    onComplete = {}
+                                )
+                            }
+                        }
+                        val msg = when (currentLanguage.code) {
+                            "it" -> "Backup ripristinato!"
+                            "fil" -> "Na-restore ang backup!"
+                            else -> "Backup restored!"
+                        }
+                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
                     }
-                    android.widget.Toast.makeText(context, "Backup restored from Drive!", android.widget.Toast.LENGTH_SHORT).show()
+                    kotlinx.coroutines.delay(2000)
+                } catch (e: Exception) {
+                    val errMsg = when (currentLanguage.code) {
+                        "it" -> "Errore ripristino"
+                        "fil" -> "Error sa pag-restore"
+                        else -> "Error restoring"
+                    }
+                    android.widget.Toast.makeText(context, "$errMsg: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                } finally {
+                    setBackupRestoreInProgress(false)
                 }
-            } catch (e: Exception) {
-                android.widget.Toast.makeText(context, "Error restoring backup: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -1758,7 +2012,7 @@ fun LanguageSettingsTabContent(
         )
 
         Text(
-            "Select your preferred language interface. The entire experience will adapt instantaneously.",
+            t("settings_desc"),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
         )
@@ -1861,14 +2115,14 @@ fun LanguageSettingsTabContent(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Calendar Expiry Alert",
+            text = t("calendar_expiry_alert"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
         )
 
         Text(
-            text = "Days before expiry to automatically set for calendar alerts.",
+            text = t("days_alert_desc"),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
         )
@@ -1899,7 +2153,7 @@ fun LanguageSettingsTabContent(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = "$daysBeforeExpiryAlert days",
+                    text = String.format(t("days_alert_count"), daysBeforeExpiryAlert),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -1923,14 +2177,14 @@ fun LanguageSettingsTabContent(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Ruolo Predefinito (Settings)",
+            text = t("default_role_title"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
         )
 
         Text(
-            text = "Imposta il ruolo predefinito che verrà compilato automaticamente quando crei una nuova scheda di imbraco.",
+            text = t("default_role_desc"),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
         )
@@ -1942,7 +2196,7 @@ fun LanguageSettingsTabContent(
         RoleSelectionField(
             value = defaultRole,
             onValueChange = { embarkationViewModel.setDefaultRole(it) },
-            label = "Ruolo Default",
+            label = t("default_role_title"),
             modifier = Modifier.fillMaxWidth(),
             textFieldColors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -1954,22 +2208,230 @@ fun LanguageSettingsTabContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        val isDark = isSystemInDarkTheme()
+        val certsObj = (certificateViewModel.uiState.value as? CertificateUiState.Success)?.certificates ?: emptyList()
+        val embsObj = embarkationViewModel.seaServiceSummary.value.embarkationList
+
+        val achievementsStatus = remember(certsObj, embsObj) {
+            listOf(
+                "📄" to certsObj.isNotEmpty(),
+                "🚢" to embsObj.isNotEmpty(),
+                "🏠" to embsObj.any { it.signOffDate != null },
+                "🧭" to (embsObj.size >= 3),
+                "🧜\u200D♀️" to (embsObj.size >= 5),
+                "🐳" to (embsObj.size >= 10),
+                "🐬" to (embsObj.size >= 15),
+                "🌊" to (embsObj.size >= 20),
+                "🏝️" to (embsObj.size >= 30),
+                "⚓" to (certsObj.size >= 5)
+            )
+        }
+
+        var showAchievementsDialog by remember { mutableStateOf(false) }
+
+        if (showAchievementsDialog) {
+            val achievementsDescriptions = remember {
+                val t = { en: String, it: String, tl: String ->
+                    when (currentLanguage.code) {
+                        "it" -> it
+                        "fil" -> tl
+                        else -> en
+                    }
+                }
+                mapOf(
+                    "📄" to t("First Certificate", "Primo Certificato", "Unang Certificate"),
+                    "🚢" to t("First Embarkation", "Primo Imbarco", "Unang Embarkation"),
+                    "🏠" to t("First Sign-off", "Primo Sbarco", "Unang Sign-off"),
+                    "🧭" to t("3 Embarkations", "3 Imbarchi", "3 Embarkation"),
+                    "🧜\u200D♀️" to t("5 Embarkations", "5 Imbarchi", "5 Embarkation"),
+                    "🐳" to t("10 Embarkations", "10 Imbarchi", "10 Embarkation"),
+                    "🐬" to t("15 Embarkations", "15 Imbarchi", "15 Embarkation"),
+                    "🌊" to t("20 Embarkations", "20 Imbarchi", "20 Embarkation"),
+                    "🏝️" to t("30 Embarkations", "30 Imbarchi", "30 Embarkation"),
+                    "⚓" to t("5 Certificates", "5 Certificati", "5 Certificate")
+                )
+            }
+            val isDark = isSystemInDarkTheme()
+
+            AlertDialog(
+                onDismissRequest = { showAchievementsDialog = false },
+                title = {
+                    Text(
+                        text = when (currentLanguage.code) {
+                            "it" -> "Traguardi"
+                            "fil" -> "Mga Achievement"
+                            else -> "Achievements"
+                        },
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) Color(0xFF80D8FF) else PolishOnSurfaceVariantText
+                    )
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = t("achievements_desc"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                        )
+                        
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            achievementsStatus.chunked(5).forEach { rowElems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    rowElems.forEach { (emoji, unlocked) ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(54.dp)
+                                                .background(
+                                                    color = if (isDark) Color(0xFF2C2C2C) else Color(0xFFF1F1F1),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                )
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = if (isDark) Color(0xFF3C3C3C) else Color(0xFFE0E0E0),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                )
+                                                .clickable {
+                                                    val desc = achievementsDescriptions[emoji] ?: ""
+                                                    android.widget.Toast.makeText(context, "$emoji $desc", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                                .padding(8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = emoji,
+                                                fontSize = 28.sp,
+                                                modifier = if (unlocked) Modifier.alpha(1f) else Modifier
+                                                    .alpha(0.35f)
+                                                    .drawWithContent {
+                                                        drawContent()
+                                                        drawRect(
+                                                            color = Color.Gray,
+                                                            blendMode = androidx.compose.ui.graphics.BlendMode.Saturation
+                                                        )
+                                                    }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showAchievementsDialog = false }) {
+                        Text(when (currentLanguage.code) {
+                            "it" -> "Chiudi"
+                            "fil" -> "Isara"
+                            else -> "Close"
+                        })
+                    }
+                }
+            )
+        }
+
         Text(
-            text = "Cloud Backup",
+            text = t("achievements"),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Card(
+            onClick = { showAchievementsDialog = true },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            border = BorderStroke(1.dp, PolishOutline)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = t("achievements_desc"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    val unlockedEmojis = achievementsStatus.filter { it.second }.map { it.first }.reversed()
+                    val previewEmojis = (unlockedEmojis + List(5) { "" }).take(5)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        previewEmojis.forEach { emoji ->
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(Color.Gray.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                    .border(1.dp, Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (emoji.isNotEmpty()) {
+                                    Text(
+                                        text = emoji,
+                                        fontSize = 24.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = "Open Achievements",
+                    modifier = Modifier.rotate(-90f),
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = t("cloud_backup"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
         )
 
         Text(
-            text = "Authenticate with Google Workspace to seamlessly back up and sync your credentials, embarkations, and settings on your Google Drive.",
+            text = t("cloud_backup_desc"),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
         )
         var signedInAccount by remember { mutableStateOf<GoogleSignInAccount?>(null) }
+        var showRestoreSelectionDialog by remember { mutableStateOf(false) }
+        var availableBackups by remember { mutableStateOf<List<DriveBackupInfo>>(emptyList()) }
         
+        var localBackupFiles by remember { mutableStateOf<List<java.io.File>>(emptyList()) }
+        var showLocalRestoreSelectionDialog by remember { mutableStateOf(false) }
+
+        val reloadLocalBackups = {
+            val backupsDir = java.io.File(context.filesDir, "backups")
+            val files = backupsDir.listFiles { _, name -> name.startsWith("seapass_backup_") && name.endsWith(".json") }
+            localBackupFiles = files?.sortedByDescending { it.lastModified() }?.take(5) ?: emptyList()
+        }
+
         LaunchedEffect(Unit) {
             signedInAccount = GoogleSignIn.getLastSignedInAccount(context)
+            reloadLocalBackups()
         }
 
         val googleSignInLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -1988,6 +2450,13 @@ fun LanguageSettingsTabContent(
         }
         
         val coroutineScope = rememberCoroutineScope()
+        
+        val backupSuccessText = t("backup_success")
+        val backupFailedText = t("backup_failed")
+        val backupRestoreInProgressText = t("backup_restore_in_progress")
+        val backupRestoredText = t("backup_restored")
+        val restoreErrorText = t("restore_error")
+        val backupNotFoundText = t("backup_not_found")
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -2017,11 +2486,31 @@ fun LanguageSettingsTabContent(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Google Drive Backup",
+                            text = t("backup_su_drive"),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+
+                    if (signedInAccount != null) {
+                        IconButton(
+                            onClick = {
+                                val gso = com.google.android.gms.auth.api.signin.GoogleSignInOptions.Builder(
+                                    com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN
+                                ).build()
+                                com.google.android.gms.auth.api.signin.GoogleSignIn.getClient(context, gso).signOut().addOnCompleteListener {
+                                    signedInAccount = null
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ExitToApp,
+                                contentDescription = "Logout",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
                 }
 
@@ -2030,7 +2519,7 @@ fun LanguageSettingsTabContent(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Backup e Ripristino con Google Drive",
+                        text = t("backup_restore_title"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
@@ -2044,60 +2533,81 @@ fun LanguageSettingsTabContent(
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
-                            Text("Accedi con Google", fontWeight = FontWeight.Bold)
+                            Text(t("btn_sign_in"), fontWeight = FontWeight.Bold)
                         }
                     } else {
+                        // Display Signed In info
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = signedInAccount!!.email ?: "Google Account Connected",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
                         // Backup/Restore buttons here, using signedInAccount!!
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            val backupText = t("backup_in_progress")
                             Button(
                                 onClick = { 
                                     coroutineScope.launch {
-                                        android.widget.Toast.makeText(context, "Backup in corso...", android.widget.Toast.LENGTH_SHORT).show()
-                                        
-                                        val certs = (certificateViewModel.uiState.value as? CertificateUiState.Success)?.certificates ?: emptyList()
-                                        val embs = embarkationViewModel.seaServiceSummary.value.embarkationList
-                                        
-                                        val json = org.json.JSONObject()
-                                        val certsArray = org.json.JSONArray()
-                                        certs.forEach { cert ->
-                                            val obj = org.json.JSONObject()
-                                            obj.put("title", cert.title)
-                                            obj.put("certNumber", cert.certNumber)
-                                            obj.put("issueDate", cert.issueDate)
-                                            obj.put("expiryDate", cert.expiryDate)
-                                            obj.put("category", cert.category)
-                                            obj.put("isMandatory", cert.isMandatory)
-                                            certsArray.put(obj)
-                                        }
-                                        json.put("certificates", certsArray)
-                        
-                                        val embsArray = org.json.JSONArray()
-                                        embs.forEach { emb ->
-                                            val obj = org.json.JSONObject()
-                                            obj.put("vesselName", emb.vesselName)
-                                            obj.put("vesselImo", emb.vesselImo)
-                                            obj.put("vesselMmsi", emb.vesselMmsi ?: "")
-                                            obj.put("rank", emb.rank)
-                                            obj.put("vesselType", emb.vesselType ?: "")
-                                            obj.put("vesselFlag", emb.vesselFlag ?: "")
-                                            obj.put("signOnDate", emb.signOnDate)
-                                            if (emb.signOffDate != null) obj.put("signOffDate", emb.signOffDate)
-                                            if (emb.signOnPort != null) obj.put("signOnPort", emb.signOnPort)
-                                            if (emb.signOffPort != null) obj.put("signOffPort", emb.signOffPort)
-                                            embsArray.put(obj)
-                                        }
-                                        json.put("embarkations", embsArray)
-                                        
-                                        val jsonStr = json.toString(4)
+                                        setBackupRestoreInProgress(true)
+                                        try {
+                                            android.widget.Toast.makeText(context, backupText, android.widget.Toast.LENGTH_SHORT).show()
+                                            
+                                            val certs = (certificateViewModel.uiState.value as? CertificateUiState.Success)?.certificates ?: emptyList()
+                                            val embs = embarkationViewModel.seaServiceSummary.value.embarkationList
+                                            
+                                            val json = org.json.JSONObject()
+                                            val certsArray = org.json.JSONArray()
+                                            certs.forEach { cert ->
+                                                val obj = org.json.JSONObject()
+                                                obj.put("title", cert.title)
+                                                obj.put("certNumber", cert.certNumber)
+                                                obj.put("issueDate", cert.issueDate)
+                                                obj.put("expiryDate", cert.expiryDate)
+                                                obj.put("category", cert.category)
+                                                obj.put("isMandatory", cert.isMandatory)
+                                                certsArray.put(obj)
+                                            }
+                                            json.put("certificates", certsArray)
+                            
+                                            val embsArray = org.json.JSONArray()
+                                            embs.forEach { emb ->
+                                                val obj = org.json.JSONObject()
+                                                obj.put("vesselName", emb.vesselName)
+                                                obj.put("vesselImo", emb.vesselImo)
+                                                obj.put("vesselMmsi", emb.vesselMmsi ?: "")
+                                                obj.put("rank", emb.rank)
+                                                obj.put("vesselType", emb.vesselType ?: "")
+                                                obj.put("vesselFlag", emb.vesselFlag ?: "")
+                                                obj.put("signOnDate", emb.signOnDate)
+                                                if (emb.signOffDate != null) obj.put("signOffDate", emb.signOffDate)
+                                                if (emb.signOnPort != null) obj.put("signOnPort", emb.signOnPort)
+                                                if (emb.signOffPort != null) obj.put("signOffPort", emb.signOffPort)
+                                                embsArray.put(obj)
+                                            }
+                                            json.put("embarkations", embsArray)
+                                            
+                                            val jsonStr = json.toString(4)
 
-                                        val success = GoogleDriveBackupHelper.uploadBackup(context, signedInAccount!!, jsonStr)
-                                        if (success) {
-                                            android.widget.Toast.makeText(context, "Backup caricato su Drive!", android.widget.Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            android.widget.Toast.makeText(context, "Errore nel backup", android.widget.Toast.LENGTH_SHORT).show()
+                                            val success = GoogleDriveBackupHelper.uploadBackup(context, signedInAccount!!, jsonStr)
+                                            if (success) {
+                                                android.widget.Toast.makeText(context, backupSuccessText, android.widget.Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                android.widget.Toast.makeText(context, backupFailedText, android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                            kotlinx.coroutines.delay(2000)
+                                        } finally {
+                                            setBackupRestoreInProgress(false)
                                         }
                                     }
                                 },
@@ -2112,16 +2622,199 @@ fun LanguageSettingsTabContent(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Backup su Drive", fontSize = 12.sp)
+                                Text(t("backup_su_drive"), fontSize = 12.sp)
                             }
 
+                            val localLoadingText = if (currentLanguage.code == "it") "Caricamento backup..." else if (currentLanguage.code == "fil") "Naglo-load ng backup..." else "Loading backups..."
                             Button(
                                 onClick = { 
                                     coroutineScope.launch {
-                                        android.widget.Toast.makeText(context, "Ripristino in corso...", android.widget.Toast.LENGTH_SHORT).show()
-                                        val jsonString = GoogleDriveBackupHelper.downloadLatestBackup(context, signedInAccount!!)
-                                        if (jsonString != null) {
+                                        setBackupRestoreInProgress(true)
+                                        try {
+                                            android.widget.Toast.makeText(context, localLoadingText, android.widget.Toast.LENGTH_SHORT).show()
+                                            val list = GoogleDriveBackupHelper.listBackups(context, signedInAccount!!)
+                                            if (list.isEmpty()) {
+                                                android.widget.Toast.makeText(context, backupNotFoundText, android.widget.Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                availableBackups = list.take(5)
+                                                showRestoreSelectionDialog = true
+                                            }
+                                            kotlinx.coroutines.delay(2000)
+                                        } finally {
+                                            setBackupRestoreInProgress(false)
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                            ) {
+                                Icon(
+                                    painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.ic_cloud),
+                                    contentDescription = t("get_from_drive"),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(t("get_from_drive"), fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = t("offline_backups"),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Text(
+            text = t("offline_backups_desc"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = "Device",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = t("offline_backups"),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            val name = "seapass_backup_${System.currentTimeMillis()}.json"
+                            createDocumentLauncher.launch(name)
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "Save Local",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(t("create_offline_backup"), fontSize = 12.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            openDocumentLauncher.launch(arrayOf("application/json", "*/*"))
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Restore Local",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(t("restore_offline_backup"), fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        if (showLocalRestoreSelectionDialog) {
+            val isDark = isSystemInDarkTheme()
+            val locale = when (currentLanguage.code) {
+                "it" -> java.util.Locale("it", "IT")
+                "fil" -> java.util.Locale("tl", "PH")
+                else -> java.util.Locale.US
+            }
+            val backupFormatter = remember(currentLanguage) { SimpleDateFormat("dd MMM yyyy - HH:mm:ss", locale) }
+            AlertDialog(
+                onDismissRequest = { showLocalRestoreSelectionDialog = false },
+                title = {
+                    Text(
+                        text = when (currentLanguage.code) {
+                            "it" -> "Seleziona Backup Dispositivo"
+                            "fil" -> "Piliin ang Local Backup"
+                            else -> "Select Device Backup"
+                        },
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) Color(0xFF80D8FF) else PolishOnSurfaceVariantText
+                    )
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = when (currentLanguage.code) {
+                                "it" -> "Seleziona uno dei 5 backup più recenti salvati sul dispositivo per rispristinare i dati:"
+                                "fil" -> "Pumili ng isa sa pinakabagong 5 backup sa device para i-restore:"
+                                else -> "Select one of the 5 most recent backups saved on the device to restore the details:"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        
+                        Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+
+                        localBackupFiles.forEach { file ->
+                            val dtFormatted = try {
+                                backupFormatter.format(java.util.Date(file.lastModified()))
+                            } catch (_: Exception) {
+                                file.name
+                            }
+
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showLocalRestoreSelectionDialog = false
+                                        coroutineScope.launch {
                                             try {
+                                                val jsonString = file.readText()
                                                 val jsonObj = org.json.JSONObject(jsonString)
                                                 val certsArr = jsonObj.optJSONArray("certificates")
                                                 if (certsArr != null) {
@@ -2163,33 +2856,216 @@ fun LanguageSettingsTabContent(
                                                         )
                                                     }
                                                 }
-                                                android.widget.Toast.makeText(context, "Ripristino completato", android.widget.Toast.LENGTH_SHORT).show()
+                                                android.widget.Toast.makeText(context, backupRestoredText, android.widget.Toast.LENGTH_SHORT).show()
                                             } catch(e: Exception) {
                                                 e.printStackTrace()
-                                                android.widget.Toast.makeText(context, "Errore durante il ripristino", android.widget.Toast.LENGTH_SHORT).show()
+                                                android.widget.Toast.makeText(context, restoreErrorText, android.widget.Toast.LENGTH_SHORT).show()
                                             }
-                                        } else {
-                                            android.widget.Toast.makeText(context, "Nessun backup trovato su Drive", android.widget.Toast.LENGTH_SHORT).show()
                                         }
                                     }
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                             ) {
-                                Icon(
-                                    painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.ic_cloud),
-                                    contentDescription = "Restore",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Ottieni da Drive", fontSize = 12.sp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Info,
+                                        contentDescription = "Local",
+                                        tint = if (isDark) Color(0xFF80D8FF) else PolishPrimary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = dtFormatted,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "Local File",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showLocalRestoreSelectionDialog = false }) {
+                        Text(when (currentLanguage.code) {
+                            "it" -> "Annulla"
+                            "fil" -> "Kanselahin"
+                            else -> "Cancel"
+                        })
+                    }
                 }
+            )
+        }
+
+        if (showRestoreSelectionDialog) {
+            val isDark = isSystemInDarkTheme()
+            val locale = when (currentLanguage.code) {
+                "it" -> java.util.Locale("it", "IT")
+                "fil" -> java.util.Locale("tl", "PH")
+                else -> java.util.Locale.US
             }
+            val backupFormatter = remember(currentLanguage) { SimpleDateFormat("dd MMM yyyy - HH:mm:ss", locale) }
+            AlertDialog(
+                onDismissRequest = { showRestoreSelectionDialog = false },
+                title = {
+                    Text(
+                        text = when (currentLanguage.code) {
+                            "it" -> "Seleziona Backup"
+                            "fil" -> "Piliin ang Backup"
+                            else -> "Select Backup"
+                        },
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) Color(0xFF80D8FF) else PolishOnSurfaceVariantText
+                    )
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = when (currentLanguage.code) {
+                                "it" -> "Seleziona uno dei 5 backup più recenti per ripristinare i tuoi dati:"
+                                "fil" -> "Pumili ng isa sa 5 pinakabagong backup para i-restore ang iyong data:"
+                                else -> "Select one of the 5 most recent backups to restore your data:"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        
+                        Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+
+                        availableBackups.forEach { backup ->
+                            val dtFormatted = try {
+                                backupFormatter.format(java.util.Date(backup.timestamp))
+                            } catch (_: Exception) {
+                                "Backup " + backup.name
+                            }
+
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showRestoreSelectionDialog = false
+                                        coroutineScope.launch {
+                                            setBackupRestoreInProgress(true)
+                                            try {
+                                                android.widget.Toast.makeText(context, backupRestoreInProgressText, android.widget.Toast.LENGTH_SHORT).show()
+                                                val jsonString = GoogleDriveBackupHelper.downloadBackup(context, signedInAccount!!, backup.id)
+                                                if (jsonString != null) {
+                                                    try {
+                                                        val jsonObj = org.json.JSONObject(jsonString)
+                                                        val certsArr = jsonObj.optJSONArray("certificates")
+                                                        if (certsArr != null) {
+                                                            for (i in 0 until certsArr.length()) {
+                                                                val c = certsArr.getJSONObject(i)
+                                                                certificateViewModel.saveCertificate(
+                                                                    title = c.getString("title"),
+                                                                    category = if (c.has("category")) c.getString("category") else "Other",
+                                                                    issueDate = c.getLong("issueDate"),
+                                                                    expiryDate = c.getLong("expiryDate"),
+                                                                    certNumber = c.getString("certNumber"),
+                                                                    isMandatory = if (c.has("isMandatory")) c.getBoolean("isMandatory") else true,
+                                                                    attachmentUriString = null,
+                                                                    context = context,
+                                                                    onComplete = {}
+                                                                )
+                                                            }
+                                                        }
+                                                        val embsArr = jsonObj.optJSONArray("embarkations")
+                                                        if (embsArr != null) {
+                                                            for (i in 0 until embsArr.length()) {
+                                                                val e = embsArr.getJSONObject(i)
+                                                                embarkationViewModel.saveEmbarkation(
+                                                                    id = 0,
+                                                                    vesselName = e.getString("vesselName"),
+                                                                    vesselImo = e.getString("vesselImo"),
+                                                                    vesselMmsi = e.optString("vesselMmsi").takeIf { it.isNotBlank() },
+                                                                    rank = e.getString("rank"),
+                                                                    vesselType = e.optString("vesselType").takeIf { it.isNotBlank() },
+                                                                    vesselFlag = e.optString("vesselFlag").takeIf { it.isNotBlank() },
+                                                                    signOnDate = e.getLong("signOnDate"),
+                                                                    signOffDate = if (e.has("signOffDate")) e.getLong("signOffDate") else null,
+                                                                    signOnPort = if (e.has("signOnPort")) e.getString("signOnPort") else null,
+                                                                    signOffPort = if (e.has("signOffPort")) e.getString("signOffPort") else null,
+                                                                    seaDaysOverride = null,
+                                                                    grossTonnage = null,
+                                                                    vesselDimensions = null,
+                                                                    onComplete = {}
+                                                                )
+                                                            }
+                                                        }
+                                                        android.widget.Toast.makeText(context, backupRestoredText, android.widget.Toast.LENGTH_SHORT).show()
+                                                    } catch(e: Exception) {
+                                                        e.printStackTrace()
+                                                        android.widget.Toast.makeText(context, restoreErrorText, android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                } else {
+                                                    android.widget.Toast.makeText(context, backupNotFoundText, android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                                kotlinx.coroutines.delay(2000)
+                                            } finally {
+                                                setBackupRestoreInProgress(false)
+                                            }
+                                        }
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.ic_cloud),
+                                        contentDescription = "Cloud",
+                                        tint = if (isDark) Color(0xFF80D8FF) else PolishPrimary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = dtFormatted,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "ID: ${backup.id.take(8)}...",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showRestoreSelectionDialog = false }) {
+                        Text(when (currentLanguage.code) {
+                            "it" -> "Annulla"
+                            "fil" -> "Kanselahin"
+                            else -> "Cancel"
+                        })
+                    }
+                }
+            )
         }
     }
 }
@@ -2206,10 +3082,11 @@ fun RegisterSignOffDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
+            val isDark = isSystemInDarkTheme()
             Text(
                 t("update_signoff"),
                 fontWeight = FontWeight.Bold,
-                color = PolishOnSurfaceVariantText
+                color = if (isDark) Color(0xFF80D8FF) else PolishOnSurfaceVariantText
             )
         },
         text = {
@@ -2250,6 +3127,7 @@ fun RegisterSignOffDialog(
             }
         },
         confirmButton = {
+            val isDark = isSystemInDarkTheme()
             Button(
                 onClick = {
                     viewModel.registerSignOff(
@@ -2258,7 +3136,11 @@ fun RegisterSignOffDialog(
                         signOffPort = signOffPort,
                         onComplete = onDismiss
                     )
-                }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDark) Color(0xFF80D8FF) else PolishPrimary,
+                    contentColor = if (isDark) Color(0xFF002244) else Color.White
+                )
             ) {
                 Text(t("btn_save"))
             }

@@ -53,6 +53,10 @@ fun AddEditScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val openCertTitle = t("open_cert")
+    val cannotOpenFileMsg = t("cannot_open_file")
+    val cameraErrorMsg = t("camera_error")
+    val cameraPermissionDeniedMsg = t("camera_permission_denied")
 
     // Screen State
     var title by remember { mutableStateOf("") }
@@ -176,10 +180,10 @@ fun AddEditScreen(
                 )
                 cameraLauncher.launch(uri)
             } catch (e: Exception) {
-                android.widget.Toast.makeText(context, "Errore fotocamera: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, "$cameraErrorMsg: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
             }
         } else {
-            android.widget.Toast.makeText(context, "Permesso fotocamera negato", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, cameraPermissionDeniedMsg, android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -201,7 +205,7 @@ fun AddEditScreen(
                 )
                 cameraLauncher.launch(uri)
             } catch (e: Exception) {
-                android.widget.Toast.makeText(context, "Errore fotocamera: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, "$cameraErrorMsg: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
             }
         } else {
             cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
@@ -295,7 +299,7 @@ fun AddEditScreen(
                         onValueChange = {},
                         readOnly = true,
                         enabled = false,
-                        label = { Text(t("doc_title")) },
+                        label = { Text(t("doc_title_label")) },
                         colors = OutlinedTextFieldDefaults.colors(
                             disabledTextColor = MaterialTheme.colorScheme.onSurface,
                             disabledBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
@@ -303,7 +307,7 @@ fun AddEditScreen(
                             disabledPlaceholderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                             disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         ),
-                        trailingIcon = { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Select Title") },
+                        trailingIcon = { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = t("select_title")) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp)
                     )
@@ -313,7 +317,7 @@ fun AddEditScreen(
                     OutlinedTextField(
                         value = title,
                         onValueChange = { title = it },
-                        label = { Text("Custom Title") },
+                        label = { Text(t("custom_title")) },
                         colors = textFieldColors,
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -328,11 +332,11 @@ fun AddEditScreen(
 
                 Box(modifier = Modifier.fillMaxWidth().clickable { isFolderDialogVisible = true }) {
                     OutlinedTextField(
-                        value = folderName ?: "Nessuna cartella",
+                        value = folderName ?: t("no_folder"),
                         onValueChange = {},
                         readOnly = true,
                         enabled = false,
-                        label = { Text("Cartella") },
+                        label = { Text(t("folder")) },
                         colors = OutlinedTextFieldDefaults.colors(
                             disabledTextColor = MaterialTheme.colorScheme.onSurface,
                             disabledBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
@@ -340,7 +344,7 @@ fun AddEditScreen(
                             disabledPlaceholderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                             disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         ),
-                        trailingIcon = { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Sposta in cartella") },
+                        trailingIcon = { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = t("move_to_folder")) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp)
                     )
@@ -349,7 +353,7 @@ fun AddEditScreen(
                 if (isFolderDialogVisible) {
                     AlertDialog(
                         onDismissRequest = { isFolderDialogVisible = false },
-                        title = { Text("Seleziona Cartella") },
+                        title = { Text(t("select_folder")) },
                         text = {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 // Add a on-the-fly folder creation row
@@ -361,7 +365,7 @@ fun AddEditScreen(
                                     OutlinedTextField(
                                         value = newFolderInputText,
                                         onValueChange = { newFolderInputText = it },
-                                        placeholder = { Text("Crea nuova...") },
+                                        placeholder = { Text(t("create_folder_placeholder")) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f),
                                         colors = textFieldColors,
@@ -390,7 +394,7 @@ fun AddEditScreen(
                                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
                                     item {
                                         Text(
-                                            text = "Nessuna cartella",
+                                            text = t("no_folder"),
                                             style = MaterialTheme.typography.bodyLarge,
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -430,12 +434,12 @@ fun AddEditScreen(
                 if (isTitleDialogVisible) {
                     AlertDialog(
                         onDismissRequest = { isTitleDialogVisible = false },
-                        title = { Text(t("doc_title")) },
+                        title = { Text(t("select_title")) },
                         text = {
                             LazyColumn(modifier = Modifier.fillMaxWidth()) {
                                 items(certificateTitles) { selection ->
                                     Text(
-                                        text = selection,
+                                        text = if (selection == "Other") t("other") else selection,
                                         style = MaterialTheme.typography.bodyLarge,
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -466,7 +470,7 @@ fun AddEditScreen(
                 OutlinedTextField(
                     value = certNumber,
                     onValueChange = { certNumber = it },
-                    label = { Text(t("doc_num")) },
+                    label = { Text(t("doc_num_label")) },
                     placeholder = { Text("e.g. STCW-12345") },
                     singleLine = true,
                     colors = textFieldColors,
@@ -508,7 +512,7 @@ fun AddEditScreen(
                             value = dateFormatter.format(Date(issueDateMillis)),
                             onValueChange = {},
                             enabled = false,
-                            label = { Text(t("issue_date")) },
+                            label = { Text(t("issue_date_label")) },
                             trailingIcon = { Icon(Icons.Filled.DateRange, contentDescription = null) },
                             colors = OutlinedTextFieldDefaults.colors(
                                 disabledTextColor = MaterialTheme.colorScheme.onSurface,
@@ -548,7 +552,7 @@ fun AddEditScreen(
                             value = dateFormatter.format(Date(expiryDateMillis)),
                             onValueChange = {},
                             enabled = false,
-                            label = { Text(t("expiry_date")) },
+                            label = { Text(t("expiry_date_label")) },
                             trailingIcon = { Icon(Icons.Filled.DateRange, contentDescription = null) },
                             colors = OutlinedTextFieldDefaults.colors(
                                 disabledTextColor = MaterialTheme.colorScheme.onSurface,
@@ -600,7 +604,7 @@ fun AddEditScreen(
                                         .size(160.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(Color.DarkGray)
-                                        .clickable { openFile(context, path) }
+                                        .clickable { openFile(context, path, openCertTitle, cannotOpenFileMsg) }
                                 )
                             } else {
                                 // Show file name badge
@@ -608,7 +612,7 @@ fun AddEditScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier
-                                        .clickable { openFile(context, path) }
+                                        .clickable { openFile(context, path, openCertTitle, cannotOpenFileMsg) }
                                         .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
                                         .padding(horizontal = 12.dp, vertical = 8.dp)
                                 ) {
@@ -724,7 +728,7 @@ fun AddEditScreen(
                     )
                 ) {
                     Text(
-                        text = t("btn_save"),
+                        text = t("save_document"),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -734,7 +738,7 @@ fun AddEditScreen(
     }
 }
 
-private fun openFile(context: android.content.Context, pathString: String) {
+private fun openFile(context: android.content.Context, pathString: String, chooserTitle: String, errorMessagePrefix: String) {
     try {
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
         val uri = if (pathString.startsWith("content://")) {
@@ -757,11 +761,11 @@ private fun openFile(context: android.content.Context, pathString: String) {
         intent.setDataAndType(uri, mimeType)
         intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         intent.clipData = android.content.ClipData.newRawUri(null, uri)
-        val chooser = android.content.Intent.createChooser(intent, "Apri certificato")
+        val chooser = android.content.Intent.createChooser(intent, chooserTitle)
         chooser.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         context.startActivity(chooser)
     } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "Impossibile aprire il file: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+        android.widget.Toast.makeText(context, "$errorMessagePrefix: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
     }
 }
 

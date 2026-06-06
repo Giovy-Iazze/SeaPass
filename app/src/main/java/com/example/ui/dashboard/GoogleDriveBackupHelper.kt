@@ -14,6 +14,12 @@ import com.google.api.services.drive.DriveScopes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+data class DriveBackupInfo(
+    val id: String,
+    val name: String,
+    val timestamp: Long
+)
+
 object GoogleDriveBackupHelper {
 
     fun getGoogleSignInIntent(context: Context): Intent {
@@ -41,26 +47,27 @@ object GoogleDriveBackupHelper {
         try {
             val service = getDriveService(context, account)
 
+            // Save the new backup with timestamp
             val fileMetadata = com.google.api.services.drive.model.File().apply {
-                name = "backup.json"
+                name = "seapass_backup_${System.currentTimeMillis()}.json"
                 parents = listOf("appDataFolder")
             }
             
             val mediaContent = ByteArrayContent.fromString("application/json", backupJson)
-
-            val existing = service.files().list()
-                .setSpaces("appDataFolder")
-                .setQ("name = 'backup.json'")
+            service.files().create(fileMetadata, mediaContent)
+                .setFields("id")
                 .execute()
-                .files
 
-            if (existing.isNullOrEmpty()) {
-                service.files().create(fileMetadata, mediaContent)
-                    .setFields("id")
-                    .execute()
-            } else {
-                service.files().update(existing[0].id, null, mediaContent)
-                    .execute()
+            // Pull list and delete backups beyond index 4 (keep only the 5 most recent)
+            val backups = listBackupsInternal(service)
+            if (backups.size > 5) {
+                for (i in 5 until backups.size) {
+                    try {
+                        service.files().delete(backups[i].id).execute()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             }
                 
             return@withContext true
@@ -70,22 +77,64 @@ object GoogleDriveBackupHelper {
         }
     }
 
+    private fun listBackupsInternal(service: Drive): List<DriveBackupInfo> {
+        val result = service.files().list()
+            .setSpaces("appDataFolder")
+            .setFields("files(id, name, createdTime, modifiedTime)")
+            .execute()
+            
+        val files = result.files ?: emptyList()
+        return files.filter { 
+            it.name == "backup.json" || (it.name?.startsWith("seapass_backup_") == true && it.name?.endsWith(".json") == true)
+        }.map { file ->
+            val name = file.name ?: ""
+            var ts = 0L
+            if (name.startsWith("seapass_backup_") && name.endsWith(".json")) {
+                try {
+                    ts = name.substring("seapass_backup_".length, name.length - ".json".length).toLong()
+                } catch (_: Exception) {}
+            }
+            if (ts == 0L) {
+                val driveTime = file.createdTime ?: file.modifiedTime
+                if (driveTime != null) {
+                    ts = driveTime.value
+                }
+            }
+            DriveBackupInfo(
+                id = file.id,
+                name = name,
+                timestamp = ts
+            )
+        }.sortedByDescending { it.timestamp }
+    }
+
+    suspend fun listBackups(context: Context, account: GoogleSignInAccount): List<DriveBackupInfo> = withContext(Dispatchers.IO) {
+        try {
+            val service = getDriveService(context, account)
+            return@withContext listBackupsInternal(service)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext emptyList()
+        }
+    }
+
+    suspend fun downloadBackup(context: Context, account: GoogleSignInAccount, fileId: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val service = getDriveService(context, account)
+            val inputStream = service.files().get(fileId).executeMediaAsInputStream()
+            return@withContext inputStream.bufferedReader().readText()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext null
+        }
+    }
+
     suspend fun downloadLatestBackup(context: Context, account: GoogleSignInAccount): String? = withContext(Dispatchers.IO) {
         try {
             val service = getDriveService(context, account)
-            
-            val result = service.files().list()
-                .setSpaces("appDataFolder")
-                .setQ("name = 'backup.json'")
-                .setFields("nextPageToken, files(id, name)")
-                .execute()
-                
-            val files = result.files
-            if (files.isNullOrEmpty()) {
-                return@withContext null
-            }
-            val fileId = files[0].id
-            
+            val backups = listBackupsInternal(service)
+            if (backups.isEmpty()) return@withContext null
+            val fileId = backups[0].id
             val inputStream = service.files().get(fileId).executeMediaAsInputStream()
             return@withContext inputStream.bufferedReader().readText()
         } catch (e: Exception) {

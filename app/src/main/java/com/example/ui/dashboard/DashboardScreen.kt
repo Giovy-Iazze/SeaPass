@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,11 +39,11 @@ import com.example.ui.viewmodel.CertificateViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
-enum class SortType(val label: String) {
-    EXPIRY_DATE("Scadenza"),
-    ALPHABETICAL("Alfabetico"),
-    NEWEST("Più recente"),
-    OLDEST("Meno recente")
+enum class SortType(val key: String) {
+    EXPIRY_DATE("sort_expiry"),
+    ALPHABETICAL("sort_alpha"),
+    NEWEST("sort_newest"),
+    OLDEST("sort_oldest")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,12 +55,13 @@ fun DashboardScreen(
     uiState: CertificateUiState,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        "Mariner's Wallet",
+                        t("app_name"),
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
@@ -73,9 +75,9 @@ fun DashboardScreen(
             ExtendedFloatingActionButton(
                 onClick = onAddDocumentClick,
                 icon = { Icon(Icons.Filled.Add, contentDescription = "Add Icon") },
-                text = { Text("Add Document") },
-                containerColor = PolishFABBackground,
-                contentColor = PolishFABText,
+                text = { Text(t("add_document")) },
+                containerColor = if (isDark) Color(0xFF80D8FF) else PolishFABBackground,
+                contentColor = if (isDark) Color(0xFF002244) else PolishFABText,
                 modifier = Modifier
                     .testTag("add_document_fab")
                     .padding(bottom = 16.dp, end = 8.dp)
@@ -194,8 +196,8 @@ fun DashboardContent(
     if (certificateToDelete != null) {
         AlertDialog(
             onDismissRequest = { certificateToDelete = null },
-            title = { Text("Delete Document") },
-            text = { Text("Are you sure you want to permanently delete \"${certificateToDelete?.title}\" from your wallet?") },
+            title = { Text(t("delete_cert_title")) },
+            text = { Text("${t("delete_cert_confirm")} (\"${certificateToDelete?.title}\")") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -204,12 +206,12 @@ fun DashboardContent(
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Delete")
+                    Text(t("delete"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { certificateToDelete = null }) {
-                    Text("Cancel")
+                    Text(t("cancel"))
                 }
             }
         )
@@ -249,7 +251,7 @@ fun DashboardContent(
                 ) {
                     Box {
                         TextButton(onClick = { isSortExpanded = true }) {
-                            Text(currentSort.label)
+                            Text(t(currentSort.key))
                             Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Sort By", modifier = Modifier.padding(start = 4.dp))
                         }
                         DropdownMenu(
@@ -258,7 +260,7 @@ fun DashboardContent(
                         ) {
                             SortType.entries.forEach { sortType ->
                                 DropdownMenuItem(
-                                    text = { Text(sortType.label) },
+                                    text = { Text(t(sortType.key)) },
                                     onClick = {
                                         currentSort = sortType
                                         isSortExpanded = false
@@ -314,7 +316,7 @@ fun DashboardContent(
                 if (folders.isNotEmpty()) {
                     item {
                         Text(
-                            text = "CARTELLE",
+                            text = t("folders"),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
@@ -373,7 +375,7 @@ fun DashboardContent(
                 val generalCerts = sortedCertificates.filter { it.folderName.isNullOrBlank() }
                 item {
                     Text(
-                        text = "CERTIFICATI GENERALI",
+                        text = t("general_certificates"),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -384,7 +386,7 @@ fun DashboardContent(
                 if (generalCerts.isEmpty()) {
                     item {
                         Text(
-                            text = "Nessun certificato libero. Tutti i certificati sono organizzati nelle cartelle.",
+                            text = t("no_general_certificates"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
@@ -420,13 +422,13 @@ fun DashboardContent(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Indietro",
+                            contentDescription = t("go_back"),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "🏠 Torna indietro",
+                            text = "🏠 ${t("go_back")}",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
@@ -464,7 +466,7 @@ fun DashboardContent(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Questa cartella è vuota",
+                                    text = t("folder_empty"),
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -492,12 +494,12 @@ fun DashboardContent(
     if (showCreateFolderDialog) {
         AlertDialog(
             onDismissRequest = { showCreateFolderDialog = false },
-            title = { Text("Nuova Cartella") },
+            title = { Text(t("new_folder")) },
             text = {
                 OutlinedTextField(
                     value = folderToCreate,
                     onValueChange = { folderToCreate = it },
-                    label = { Text("Nome Cartella") },
+                    label = { Text(t("folder_name")) },
                     singleLine = true
                 )
             },
@@ -509,12 +511,12 @@ fun DashboardContent(
                     showCreateFolderDialog = false
                     folderToCreate = ""
                 }) {
-                    Text("Crea")
+                    Text(t("create"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCreateFolderDialog = false }) {
-                    Text("Annulla")
+                    Text(t("cancel"))
                 }
             }
         )
@@ -661,7 +663,13 @@ fun CertificateCard(
         else -> Triple(t("valid").uppercase(), TagValidText, TagValidBg)
     }
 
-    val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+    val currentLanguage = LocalAppLanguage.current
+    val locale = when (currentLanguage.code) {
+        "it" -> java.util.Locale("it", "IT")
+        "fil" -> java.util.Locale("tl", "PH")
+        else -> java.util.Locale.US
+    }
+    val dateFormatter = remember(currentLanguage) { SimpleDateFormat("dd MMM yyyy", locale) }
     val formattedExpiry = dateFormatter.format(Date(certificate.expiryDate))
 
     OutlinedCard(
@@ -709,7 +717,7 @@ fun CertificateCard(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.List,
-                                contentDescription = "Sposta in cartella",
+                                contentDescription = t("move_to_folder"),
                                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                             )
                         }
@@ -718,7 +726,7 @@ fun CertificateCard(
                             onDismissRequest = { isMoveExpanded = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Nessuna cartella") },
+                                text = { Text(t("no_folder")) },
                                 onClick = {
                                     onMoveClick(null)
                                     isMoveExpanded = false

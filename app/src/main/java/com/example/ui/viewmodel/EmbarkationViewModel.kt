@@ -41,10 +41,21 @@ class EmbarkationViewModel(
 
     // Language state to support instantaneous translation switches
     private val _currentLanguage = MutableStateFlow(
-        try {
-            AppLanguage.valueOf(sharedPrefs.getString("app_lang", AppLanguage.EN.name) ?: AppLanguage.EN.name)
-        } catch (e: Exception) {
-            AppLanguage.EN
+        if (sharedPrefs.contains("app_lang")) {
+            try {
+                AppLanguage.valueOf(sharedPrefs.getString("app_lang", AppLanguage.EN.name) ?: AppLanguage.EN.name)
+            } catch (e: Exception) {
+                AppLanguage.EN
+            }
+        } else {
+            val deviceLang = java.util.Locale.getDefault().language
+            val defaultLang = when {
+                deviceLang.startsWith("it") -> AppLanguage.IT
+                deviceLang.startsWith("fil") || deviceLang.startsWith("tl") -> AppLanguage.FIL
+                else -> AppLanguage.EN
+            }
+            sharedPrefs.edit().putString("app_lang", defaultLang.name).apply()
+            defaultLang
         }
     )
     val currentLanguage: StateFlow<AppLanguage> = _currentLanguage.asStateFlow()

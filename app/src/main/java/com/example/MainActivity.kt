@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,6 +33,7 @@ import com.example.data.EmbarkationRepository
 import com.example.notification.NotificationHelper
 import com.example.ui.addedit.AddEditScreen
 import com.example.ui.dashboard.MainTabShell
+import com.example.ui.theme.LocalAppLanguage
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.CertificateViewModel
 import com.example.ui.viewmodel.CertificateViewModelFactory
@@ -79,51 +81,55 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val currentLanguage by embarkationViewModel.currentLanguage.collectAsState()
+
             MyApplicationTheme(darkTheme = useDarkTheme) {
-                // Handle notifications permissions elegantly on dynamic launch
-                NotificationPermissionHandler()
+                CompositionLocalProvider(LocalAppLanguage provides currentLanguage) {
+                    // Handle notifications permissions elegantly on dynamic launch
+                    NotificationPermissionHandler()
 
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    val navController = rememberNavController()
-                    val uiState by viewModel.uiState.collectAsState()
-
-                    NavHost(
-                        navController = navController,
-                        startDestination = "dashboard"
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
                     ) {
-                        composable("dashboard") {
-                            MainTabShell(
-                                certificateViewModel = viewModel,
-                                embarkationViewModel = embarkationViewModel,
-                                certificateUiState = uiState,
-                                onAddDocumentClick = {
-                                    navController.navigate("add_edit?certId=-1")
-                                },
-                                onEditDocumentClick = { certId ->
-                                    navController.navigate("add_edit?certId=$certId")
-                                }
-                            )
-                        }
-                        composable(
-                            route = "add_edit?certId={certId}",
-                            arguments = listOf(
-                                navArgument("certId") {
-                                    type = NavType.IntType
-                                    defaultValue = -1
-                                }
-                            )
-                        ) { backStackEntry ->
-                            val certId = backStackEntry.arguments?.getInt("certId") ?: -1
-                            AddEditScreen(
-                                viewModel = viewModel,
-                                certId = certId,
-                                onNavigateBack = {
-                                    navController.popBackStack()
-                                }
-                            )
+                        val navController = rememberNavController()
+                        val uiState by viewModel.uiState.collectAsState()
+
+                        NavHost(
+                            navController = navController,
+                            startDestination = "dashboard"
+                        ) {
+                            composable("dashboard") {
+                                MainTabShell(
+                                    certificateViewModel = viewModel,
+                                    embarkationViewModel = embarkationViewModel,
+                                    certificateUiState = uiState,
+                                    onAddDocumentClick = {
+                                        navController.navigate("add_edit?certId=-1")
+                                    },
+                                    onEditDocumentClick = { certId ->
+                                        navController.navigate("add_edit?certId=$certId")
+                                    }
+                                )
+                            }
+                            composable(
+                                route = "add_edit?certId={certId}",
+                                arguments = listOf(
+                                    navArgument("certId") {
+                                        type = NavType.IntType
+                                        defaultValue = -1
+                                    }
+                                )
+                            ) { backStackEntry ->
+                                val certId = backStackEntry.arguments?.getInt("certId") ?: -1
+                                AddEditScreen(
+                                    viewModel = viewModel,
+                                    certId = certId,
+                                    onNavigateBack = {
+                                        navController.popBackStack()
+                                    }
+                                )
+                            }
                         }
                     }
                 }
