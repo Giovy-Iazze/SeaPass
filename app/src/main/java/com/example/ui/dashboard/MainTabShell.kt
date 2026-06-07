@@ -709,6 +709,7 @@ fun SeaServiceStatsCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EmbarkationItemCard(
     embark: Embarkation,
@@ -743,6 +744,7 @@ fun EmbarkationItemCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
@@ -754,6 +756,7 @@ fun EmbarkationItemCard(
                         )
                         Text(
                             text = embark.vesselName,
+                            modifier = Modifier.weight(1f, fill = false),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -784,8 +787,9 @@ fun EmbarkationItemCard(
 
                     if (!embark.vesselType.isNullOrBlank() || !embark.grossTonnage.isNullOrBlank() || !embark.vesselDimensions.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Row(
+                        FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             if (!embark.vesselType.isNullOrBlank()) {
@@ -1203,7 +1207,7 @@ fun AddEmbarkationDialog(
             vesselImo = v.imo ?: ""
             vesselMmsi = v.mmsi ?: ""
             vesselType = v.type ?: ""
-            vesselFlag = v.flag ?: ""
+            vesselFlag = if (shouldDisplayFlag(v.flag)) v.flag ?: "" else ""
             grossTonnage = v.grossTonnage ?: ""
             vesselDimensions = v.vesselDimensions ?: ""
         }
@@ -2361,21 +2365,22 @@ fun LanguageSettingsTabContent(
                                         )
                                     }
                                 }
-                                Column(modifier = Modifier.weight(1f)) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.Center
+                                ) {
                                     Text(
-                                        text = title,
+                                        text = if (unlocked) title else when (currentLanguage.code) {
+                                            "it" -> "Traguardo Segreto"
+                                            "fil" -> "Misteryong Achievement"
+                                            else -> "Secret Achievement"
+                                        },
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = if (unlocked)
                                             (if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32))
                                         else
                                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                    )
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (unlocked) 0.7f else 0.4f),
-                                        lineHeight = 16.sp
                                     )
                                 }
                                 if (unlocked) {
