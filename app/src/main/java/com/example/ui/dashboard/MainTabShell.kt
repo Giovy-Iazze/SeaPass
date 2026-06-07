@@ -145,7 +145,7 @@ fun MainTabShell(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        
+
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -980,11 +980,11 @@ fun RoleSelectionField(
     // Determine if we should allow manual typing (Altro-mode)
     val isInitiallyCustom = remember(value) {
         value.isNotBlank() &&
-        value !in departments &&
-        value !in copertaRanks &&
-        value !in macchinaRanks &&
-        value !in hotelRanks &&
-        value !in cucinaRanks
+                value !in departments &&
+                value !in copertaRanks &&
+                value !in macchinaRanks &&
+                value !in hotelRanks &&
+                value !in cucinaRanks
     }
     var isCustomMode by rememberSaveable { mutableStateOf(isInitiallyCustom) }
 
@@ -1857,7 +1857,7 @@ fun LanguageSettingsTabContent(
     val coroutineScope = rememberCoroutineScope()
 
     val createDocumentLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         if (uri != null) {
             setBackupRestoreInProgress(true)
@@ -1865,17 +1865,26 @@ fun LanguageSettingsTabContent(
                 try {
                     val certs = (certificateViewModel.uiState.value as? CertificateUiState.Success)?.certificates ?: emptyList()
                     val embs = embarkationViewModel.seaServiceSummary.value.embarkationList
-                    
+
                     val json = org.json.JSONObject()
                     val certsArray = org.json.JSONArray()
+                    val attachmentFiles = mutableListOf<java.io.File>()
                     certs.forEach { cert ->
                         val obj = org.json.JSONObject()
                         obj.put("title", cert.title)
-                        obj.put("certNumber", cert.certNumber)
+                        obj.put("certNumber", cert.certNumber ?: "")
                         obj.put("issueDate", cert.issueDate)
                         obj.put("expiryDate", cert.expiryDate)
                         obj.put("category", cert.category)
                         obj.put("isMandatory", cert.isMandatory)
+                        cert.attachmentPath?.let { path ->
+                            val file = java.io.File(path)
+                            if (file.exists()) {
+                                // Store only filename so we can match it inside the zip
+                                obj.put("attachmentFileName", file.name)
+                                attachmentFiles.add(file)
+                            }
+                        }
                         certsArray.put(obj)
                     }
                     json.put("certificates", certsArray)
@@ -1896,13 +1905,20 @@ fun LanguageSettingsTabContent(
                         embsArray.put(obj)
                     }
                     json.put("embarkations", embsArray)
-                    
+
                     val jsonStr = json.toString(4)
+                    val zipFile = java.io.File(context.cacheDir, "backup_${System.currentTimeMillis()}.zip")
+                    com.example.ui.dashboard.BackupFileManager.createZipBackup(jsonStr, attachmentFiles, zipFile)
+
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         context.contentResolver.openOutputStream(uri)?.use { out ->
-                            out.write(jsonStr.toByteArray())
+                            java.io.FileInputStream(zipFile).use { input ->
+                                input.copyTo(out)
+                            }
                         }
                     }
+                    zipFile.delete()
+
                     val msg = when (currentLanguage.code) {
                         "it" -> "Backup salvato!"
                         "fil" -> "Nai-save ang backup!"
@@ -1932,7 +1948,19 @@ fun LanguageSettingsTabContent(
             coroutineScope.launch {
                 try {
                     val jsonString: String? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                        try {
+                            val tempFile = java.io.File(context.cacheDir, "temp_local_restore.zip")
+                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                java.io.FileOutputStream(tempFile).use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            val json = com.example.ui.dashboard.BackupFileManager.extractZipBackup(tempFile, context.filesDir)
+                            tempFile.delete()
+                            json
+                        } catch (e: Exception) {
+                            null
+                        }
                     }
                     if (jsonString != null) {
                         val jsonObj = org.json.JSONObject(jsonString)
@@ -1940,14 +1968,20 @@ fun LanguageSettingsTabContent(
                         if (certsArray != null) {
                             for (i in 0 until certsArray.length()) {
                                 val c = certsArray.getJSONObject(i)
+                                // attachmentFileName is present if backup was created with the fixed version
+                                val attachmentFileName = c.optString("attachmentFileName", "")
+                                val restoredAttachmentPath: String? = if (attachmentFileName.isNotBlank()) {
+                                    val dst = java.io.File(context.filesDir, attachmentFileName)
+                                    if (dst.exists()) dst.absolutePath else null
+                                } else null
                                 certificateViewModel.saveCertificate(
                                     title = c.getString("title"),
                                     category = if (c.has("category")) c.getString("category") else "Other",
                                     issueDate = c.getLong("issueDate"),
                                     expiryDate = c.getLong("expiryDate"),
-                                    certNumber = c.getString("certNumber"),
+                                    certNumber = c.optString("certNumber", ""),
                                     isMandatory = if (c.has("isMandatory")) c.getBoolean("isMandatory") else true,
-                                    attachmentUriString = null,
+                                    attachmentUriString = restoredAttachmentPath,
                                     context = context,
                                     onComplete = {}
                                 )
@@ -2239,20 +2273,31 @@ fun LanguageSettingsTabContent(
                         else -> en
                     }
                 }
-                mapOf(
-                    "📄" to t("First Certificate", "Primo Certificato", "Unang Certificate"),
-                    "🚢" to t("First Embarkation", "Primo Imbarco", "Unang Embarkation"),
-                    "🏠" to t("First Sign-off", "Primo Sbarco", "Unang Sign-off"),
-                    "🧭" to t("3 Embarkations", "3 Imbarchi", "3 Embarkation"),
-                    "🧜\u200D♀️" to t("5 Embarkations", "5 Imbarchi", "5 Embarkation"),
-                    "🐳" to t("10 Embarkations", "10 Imbarchi", "10 Embarkation"),
-                    "🐬" to t("200 Days Onboard", "200 Giorni Navigati", "200 Araw na Nakasakay"),
-                    "🌊" to t("500 Days Onboard", "500 Giorni Navigati", "500 Araw na Nakasakay"),
-                    "🏝️" to t("1000 Days Onboard", "1000 Giorni Navigati", "1000 Araw na Nakasakay"),
-                    "⚓" to t("5 Certificates", "5 Certificati", "5 Certificate")
+                listOf(
+                    Triple("📄", t("First Certificate", "Primo Certificato", "Unang Certificate"),
+                        t("Add your first certificate to the wallet.", "Aggiungi il tuo primo certificato al portafogli.", "Magdagdag ng iyong unang certificate.")),
+                    Triple("🚢", t("First Embarkation", "Primo Imbarco", "Unang Embarkation"),
+                        t("Record your first embarkation.", "Registra il tuo primo imbarco.", "I-record ang iyong unang embarkation.")),
+                    Triple("🏠", t("First Sign-off", "Primo Sbarco", "Unang Sign-off"),
+                        t("Complete your first sign-off.", "Completa il tuo primo sbarco.", "Kumpletuhin ang iyong unang sign-off.")),
+                    Triple("🧭", t("3 Embarkations", "3 Imbarchi", "3 Embarkation"),
+                        t("Log 3 embarkations.", "Registra 3 imbarchi.", "Mag-log ng 3 embarkation.")),
+                    Triple("🧜\u200D♀️", t("5 Embarkations", "5 Imbarchi", "5 Embarkation"),
+                        t("Log 5 embarkations.", "Registra 5 imbarchi.", "Mag-log ng 5 embarkation.")),
+                    Triple("🐳", t("10 Embarkations", "10 Imbarchi", "10 Embarkation"),
+                        t("Log 10 embarkations.", "Registra 10 imbarchi.", "Mag-log ng 10 embarkation.")),
+                    Triple("🐬", t("200 Days Onboard", "200 Giorni Navigati", "200 Araw na Nakasakay"),
+                        t("Reach 200 sea days total.", "Raggiungi 200 giorni di navigazione.", "Maabot ang 200 araw sa dagat.")),
+                    Triple("🌊", t("500 Days Onboard", "500 Giorni Navigati", "500 Araw na Nakasakay"),
+                        t("Reach 500 sea days total.", "Raggiungi 500 giorni di navigazione.", "Maabot ang 500 araw sa dagat.")),
+                    Triple("🏝️", t("1000 Days Onboard", "1000 Giorni Navigati", "1000 Araw na Nakasakay"),
+                        t("Reach 1000 sea days total.", "Raggiungi 1000 giorni di navigazione.", "Maabot ang 1000 araw sa dagat.")),
+                    Triple("⚓", t("5 Certificates", "5 Certificati", "5 Certificate"),
+                        t("Add 5 certificates to the wallet.", "Aggiungi 5 certificati al portafogli.", "Magdagdag ng 5 certificate."))
                 )
             }
             val isDark = isSystemInDarkTheme()
+            val unlockedList = achievementsStatus.map { it.second }
 
             AlertDialog(
                 onDismissRequest = { showAchievementsDialog = false },
@@ -2268,60 +2313,78 @@ fun LanguageSettingsTabContent(
                     )
                 },
                 text = {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth()
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 400.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = t("achievements_desc"),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                        )
-                        
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            achievementsStatus.chunked(5).forEach { rowElems ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
+                        items(achievementsDescriptions.zip(unlockedList)) { (triple, unlocked) ->
+                            val (emoji, title, desc) = triple
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        color = if (unlocked)
+                                            (if (isDark) Color(0xFF1E3A2F) else Color(0xFFE8F5E9))
+                                        else
+                                            (if (isDark) Color(0xFF2C2C2C) else Color(0xFFF5F5F5)),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // Emoji con scurimento se bloccato
+                                Box(
+                                    modifier = Modifier.size(40.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    rowElems.forEach { (emoji, unlocked) ->
-                                        Box(
-                                            modifier = Modifier
-                                                .size(54.dp)
-                                                .background(
-                                                    color = if (isDark) Color(0xFF2C2C2C) else Color(0xFFF1F1F1),
-                                                    shape = RoundedCornerShape(12.dp)
+                                    Text(
+                                        text = emoji,
+                                        fontSize = 26.sp,
+                                        modifier = if (unlocked) Modifier.alpha(1f) else Modifier
+                                            .alpha(0.3f)
+                                            .drawWithContent {
+                                                drawContent()
+                                                drawRect(
+                                                    color = Color.Gray,
+                                                    blendMode = androidx.compose.ui.graphics.BlendMode.Saturation
                                                 )
-                                                .border(
-                                                    width = 1.dp,
-                                                    color = if (isDark) Color(0xFF3C3C3C) else Color(0xFFE0E0E0),
-                                                    shape = RoundedCornerShape(12.dp)
-                                                )
-                                                .clickable {
-                                                    val desc = achievementsDescriptions[emoji] ?: ""
-                                                    android.widget.Toast.makeText(context, "$emoji $desc", android.widget.Toast.LENGTH_SHORT).show()
-                                                }
-                                                .padding(8.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = emoji,
-                                                fontSize = 28.sp,
-                                                modifier = if (unlocked) Modifier.alpha(1f) else Modifier
-                                                    .alpha(0.35f)
-                                                    .drawWithContent {
-                                                        drawContent()
-                                                        drawRect(
-                                                            color = Color.Gray,
-                                                            blendMode = androidx.compose.ui.graphics.BlendMode.Saturation
-                                                        )
-                                                    }
-                                            )
-                                        }
+                                            }
+                                    )
+                                    if (!unlocked) {
+                                        Text(
+                                            text = "🔒",
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.align(Alignment.BottomEnd)
+                                        )
                                     }
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (unlocked)
+                                            (if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32))
+                                        else
+                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    )
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (unlocked) 0.7f else 0.4f),
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                                if (unlocked) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = "Unlocked",
+                                        tint = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32),
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
                         }
@@ -2420,7 +2483,7 @@ fun LanguageSettingsTabContent(
         var signedInAccount by remember { mutableStateOf<GoogleSignInAccount?>(null) }
         var showRestoreSelectionDialog by remember { mutableStateOf(false) }
         var availableBackups by remember { mutableStateOf<List<DriveBackupInfo>>(emptyList()) }
-        
+
         var localBackupFiles by remember { mutableStateOf<List<java.io.File>>(emptyList()) }
         var showLocalRestoreSelectionDialog by remember { mutableStateOf(false) }
 
@@ -2449,9 +2512,9 @@ fun LanguageSettingsTabContent(
                 android.widget.Toast.makeText(context, "Google Sign-In failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        
+
         val coroutineScope = rememberCoroutineScope()
-        
+
         val backupSuccessText = t("backup_success")
         val backupFailedText = t("backup_failed")
         val backupRestoreInProgressText = t("backup_restore_in_progress")
@@ -2527,7 +2590,7 @@ fun LanguageSettingsTabContent(
 
                     if (signedInAccount == null) {
                         Button(
-                            onClick = { 
+                            onClick = {
                                 googleSignInLauncher.launch(GoogleDriveBackupHelper.getGoogleSignInIntent(context))
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -2558,29 +2621,37 @@ fun LanguageSettingsTabContent(
                         ) {
                             val backupText = t("backup_in_progress")
                             Button(
-                                onClick = { 
+                                onClick = {
                                     coroutineScope.launch {
                                         setBackupRestoreInProgress(true)
                                         try {
                                             android.widget.Toast.makeText(context, backupText, android.widget.Toast.LENGTH_SHORT).show()
-                                            
+
                                             val certs = (certificateViewModel.uiState.value as? CertificateUiState.Success)?.certificates ?: emptyList()
                                             val embs = embarkationViewModel.seaServiceSummary.value.embarkationList
-                                            
+
                                             val json = org.json.JSONObject()
                                             val certsArray = org.json.JSONArray()
+                                            val attachmentFiles = mutableListOf<java.io.File>()
                                             certs.forEach { cert ->
                                                 val obj = org.json.JSONObject()
                                                 obj.put("title", cert.title)
-                                                obj.put("certNumber", cert.certNumber)
+                                                obj.put("certNumber", cert.certNumber ?: "")
                                                 obj.put("issueDate", cert.issueDate)
                                                 obj.put("expiryDate", cert.expiryDate)
                                                 obj.put("category", cert.category)
                                                 obj.put("isMandatory", cert.isMandatory)
+                                                cert.attachmentPath?.let { path ->
+                                                    val file = java.io.File(path)
+                                                    if (file.exists()) {
+                                                        obj.put("attachmentFileName", file.name)
+                                                        attachmentFiles.add(file)
+                                                    }
+                                                }
                                                 certsArray.put(obj)
                                             }
                                             json.put("certificates", certsArray)
-                            
+
                                             val embsArray = org.json.JSONArray()
                                             embs.forEach { emb ->
                                                 val obj = org.json.JSONObject()
@@ -2597,15 +2668,18 @@ fun LanguageSettingsTabContent(
                                                 embsArray.put(obj)
                                             }
                                             json.put("embarkations", embsArray)
-                                            
-                                            val jsonStr = json.toString(4)
 
-                                            val success = GoogleDriveBackupHelper.uploadBackup(context, signedInAccount!!, jsonStr)
+                                            val jsonStr = json.toString(4)
+                                            val zipFile = java.io.File(context.cacheDir, "backup_${System.currentTimeMillis()}.zip")
+                                            com.example.ui.dashboard.BackupFileManager.createZipBackup(jsonStr, attachmentFiles, zipFile)
+
+                                            val success = GoogleDriveBackupHelper.uploadBackup(context, signedInAccount!!, zipFile)
                                             if (success) {
                                                 android.widget.Toast.makeText(context, backupSuccessText, android.widget.Toast.LENGTH_SHORT).show()
                                             } else {
                                                 android.widget.Toast.makeText(context, backupFailedText, android.widget.Toast.LENGTH_SHORT).show()
                                             }
+                                            zipFile.delete()
                                             kotlinx.coroutines.delay(2000)
                                         } finally {
                                             setBackupRestoreInProgress(false)
@@ -2628,7 +2702,7 @@ fun LanguageSettingsTabContent(
 
                             val localLoadingText = if (currentLanguage.code == "it") "Caricamento backup..." else if (currentLanguage.code == "fil") "Naglo-load ng backup..." else "Loading backups..."
                             Button(
-                                onClick = { 
+                                onClick = {
                                     coroutineScope.launch {
                                         setBackupRestoreInProgress(true)
                                         try {
@@ -2722,7 +2796,7 @@ fun LanguageSettingsTabContent(
                 ) {
                     Button(
                         onClick = {
-                            val name = "seapass_backup_${System.currentTimeMillis()}.json"
+                            val name = "seapass_backup_${System.currentTimeMillis()}.zip"
                             createDocumentLauncher.launch(name)
                         },
                         shape = RoundedCornerShape(8.dp),
@@ -2795,7 +2869,7 @@ fun LanguageSettingsTabContent(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        
+
                         Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
 
                         localBackupFiles.forEach { file ->
@@ -2821,14 +2895,19 @@ fun LanguageSettingsTabContent(
                                                 if (certsArr != null) {
                                                     for (i in 0 until certsArr.length()) {
                                                         val c = certsArr.getJSONObject(i)
+                                                        val attachmentFileName = c.optString("attachmentFileName", "")
+                                                        val restoredPath: String? = if (attachmentFileName.isNotBlank()) {
+                                                            val f = java.io.File(context.filesDir, attachmentFileName)
+                                                            if (f.exists()) f.absolutePath else null
+                                                        } else null
                                                         certificateViewModel.saveCertificate(
                                                             title = c.getString("title"),
                                                             category = if (c.has("category")) c.getString("category") else "Other",
                                                             issueDate = c.getLong("issueDate"),
                                                             expiryDate = c.getLong("expiryDate"),
-                                                            certNumber = c.getString("certNumber"),
+                                                            certNumber = c.optString("certNumber", ""),
                                                             isMandatory = if (c.has("isMandatory")) c.getBoolean("isMandatory") else true,
-                                                            attachmentUriString = null,
+                                                            attachmentUriString = restoredPath,
                                                             context = context,
                                                             onComplete = {}
                                                         )
@@ -2860,6 +2939,7 @@ fun LanguageSettingsTabContent(
                                                 android.widget.Toast.makeText(context, backupRestoredText, android.widget.Toast.LENGTH_SHORT).show()
                                             } catch(e: Exception) {
                                                 e.printStackTrace()
+                                                android.util.Log.e("SeaPassRestore", "Restore failed: ${e.javaClass.name}: ${e.message}", e)
                                                 android.widget.Toast.makeText(context, restoreErrorText, android.widget.Toast.LENGTH_SHORT).show()
                                             }
                                         }
@@ -2944,7 +3024,7 @@ fun LanguageSettingsTabContent(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        
+
                         Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
 
                         availableBackups.forEach { backup ->
@@ -2974,14 +3054,21 @@ fun LanguageSettingsTabContent(
                                                         if (certsArr != null) {
                                                             for (i in 0 until certsArr.length()) {
                                                                 val c = certsArr.getJSONObject(i)
+                                                                // attachmentFileName is present if backup was created with the fixed version
+                                                                // BackupFileManager.extractZipBackup already extracted files to context.filesDir
+                                                                val attachmentFileName = c.optString("attachmentFileName", "")
+                                                                val restoredPath: String? = if (attachmentFileName.isNotBlank()) {
+                                                                    val f = java.io.File(context.filesDir, attachmentFileName)
+                                                                    if (f.exists()) f.absolutePath else null
+                                                                } else null
                                                                 certificateViewModel.saveCertificate(
                                                                     title = c.getString("title"),
                                                                     category = if (c.has("category")) c.getString("category") else "Other",
                                                                     issueDate = c.getLong("issueDate"),
                                                                     expiryDate = c.getLong("expiryDate"),
-                                                                    certNumber = c.getString("certNumber"),
+                                                                    certNumber = c.optString("certNumber", ""),
                                                                     isMandatory = if (c.has("isMandatory")) c.getBoolean("isMandatory") else true,
-                                                                    attachmentUriString = null,
+                                                                    attachmentUriString = restoredPath,
                                                                     context = context,
                                                                     onComplete = {}
                                                                 )

@@ -13,6 +13,8 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 data class DriveBackupInfo(
     val id: String,
@@ -43,17 +45,17 @@ object GoogleDriveBackupHelper {
         ).setApplicationName("SeaPass").build()
     }
 
-    suspend fun uploadBackup(context: Context, account: GoogleSignInAccount, backupJson: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun uploadBackup(context: Context, account: GoogleSignInAccount, backupFile: File): Boolean = withContext(Dispatchers.IO) {
         try {
             val service = getDriveService(context, account)
 
             // Save the new backup with timestamp
             val fileMetadata = com.google.api.services.drive.model.File().apply {
-                name = "seapass_backup_${System.currentTimeMillis()}.json"
+                name = "seapass_backup_${System.currentTimeMillis()}.zip"
                 parents = listOf("appDataFolder")
             }
             
-            val mediaContent = ByteArrayContent.fromString("application/json", backupJson)
+            val mediaContent = com.google.api.client.http.InputStreamContent("application/zip", java.io.FileInputStream(backupFile))
             service.files().create(fileMetadata, mediaContent)
                 .setFields("id")
                 .execute()
@@ -85,13 +87,14 @@ object GoogleDriveBackupHelper {
             
         val files = result.files ?: emptyList()
         return files.filter { 
-            it.name == "backup.json" || (it.name?.startsWith("seapass_backup_") == true && it.name?.endsWith(".json") == true)
+            (it.name?.startsWith("seapass_backup_") == true && (it.name?.endsWith(".json") == true || it.name?.endsWith(".zip") == true))
         }.map { file ->
             val name = file.name ?: ""
             var ts = 0L
-            if (name.startsWith("seapass_backup_") && name.endsWith(".json")) {
+            if (name.startsWith("seapass_backup_") && (name.endsWith(".json") || name.endsWith(".zip"))) {
                 try {
-                    ts = name.substring("seapass_backup_".length, name.length - ".json".length).toLong()
+                    val suffix = if (name.endsWith(".json")) ".json" else ".zip"
+                    ts = name.substring("seapass_backup_".length, name.length - suffix.length).toLong()
                 } catch (_: Exception) {}
             }
             if (ts == 0L) {
@@ -121,8 +124,13 @@ object GoogleDriveBackupHelper {
     suspend fun downloadBackup(context: Context, account: GoogleSignInAccount, fileId: String): String? = withContext(Dispatchers.IO) {
         try {
             val service = getDriveService(context, account)
-            val inputStream = service.files().get(fileId).executeMediaAsInputStream()
-            return@withContext inputStream.bufferedReader().readText()
+            val zipFile = File(context.cacheDir, "temp_backup_$fileId.zip")
+            
+            service.files().get(fileId).executeMediaAndDownloadTo(FileOutputStream(zipFile))
+            
+            val json = com.example.ui.dashboard.BackupFileManager.extractZipBackup(zipFile, context.filesDir)
+            zipFile.delete()
+            return@withContext json
         } catch (e: Exception) {
             e.printStackTrace()
             return@withContext null
