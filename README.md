@@ -26,10 +26,10 @@ No subscriptions. No servers. Your data stays on your device.
 
 | | |
 |---|---|
-| **⚓ Embarkation Log** | Record every voyage — vessel, dates, rank, and flag state. Your complete service history in one place. |
-| **📋 Certificate Tracker** | Store all your certificates with expiry dates. Get notified before anything lapses. |
-| **☁️ Cloud Backup** | Back up to your personal Google Drive App Data folder with a single tap. Restore on any device, anytime. |
-| **🔒 Private by Design** | Drive backups go to a hidden folder only you can access — invisible to other apps and people. |
+| **⚓   Embarkation Log** | Record every voyage — vessel, dates, rank, and flag state. Your complete service history in one place. |
+| **📋   Certificate Tracker** | Store all your certificates with expiry dates. Get notified before anything lapses. |
+| **☁️   Cloud Backup** | Back up to your personal Google Drive App Data folder with a single tap. Restore on any device, anytime. |
+| **🔒   Private by Design** | Drive backups go to a hidden folder only you can access — invisible to other apps and people. |
 
 ---
 
